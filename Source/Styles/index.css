@@ -343,7 +343,12 @@ header p {
     height: 100dvh;
     margin: auto;
     padding: 24px 16px;
-    overflow-y: auto
+    overflow-y: auto;
+    scrollbar-width: none
+}
+
+#guide::-webkit-scrollbar {
+    display: none
 }
 
 #guide .heading:not(:first-of-type) {

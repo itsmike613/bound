@@ -37,8 +37,8 @@ floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 const shape = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
 const dummy = new THREE.Object3D();
-const world = new Map();
-const parts = [];
+let world = new Map();
+let parts = [];
 const tiles = [];
 let chosen = 0;
 
@@ -78,6 +78,7 @@ function add(x, y, z, type, batch = false) {
     part.cells.push({ x, y, z });
     if (part.cells.length > part.limit) grow(part);
     else { stamp(part, part.cells.length - 1); if (!batch) finish(part); }
+    if (!batch) queue();
 }
 
 function remove(x, y, z, batch = false) {
@@ -94,7 +95,7 @@ function remove(x, y, z, batch = false) {
         stamp(part, item.index);
     }
 
-    if (!batch) finish(part);
+    if (!batch) { finish(part); queue(); }
 }
 
 function select(index) {
@@ -187,6 +188,7 @@ function safe(x, y, z) {
 }
 
 function place() {
+    if (loading) return;
     const hit = aim();
     if (!hit) return;
     const x = hit.x + (hit.ax || 0), y = hit.y + (hit.ay || 0), z = hit.z + (hit.az || 0);
@@ -194,14 +196,18 @@ function place() {
 }
 
 function destroy() {
+    if (loading) return;
     const hit = aim();
     if (hit && hit.block) remove(hit.x, hit.y, hit.z);
 }
 
 const jobs = [];
+let pending = 0;
 
 function build() {
+    pending = 0;
     const job = jobs[0];
+    if (!job) return;
     const touched = new Set();
 
     for (let i = 0; i < 1000 && job.x <= job.high[0]; i++) {
@@ -221,14 +227,17 @@ function build() {
 
     touched.forEach(finish);
     if (job.x > job.high[0]) jobs.shift();
-    if (jobs.length) requestAnimationFrame(build);
+    if (jobs.length) pending = requestAnimationFrame(build);
+    else queue();
 }
 
 function fill(args) {
+    if (loading) return 'ERROR: World is busy';
     if (args.length < 6) return 'ERROR: Expected 6 coordinates';
     if (args.slice(0, 6).some(value => !/^-?\d+$/.test(value))) return 'ERROR: Invalid coordinates';
     const point = args.slice(0, 6).map(Number);
     if (point.some(value => !Number.isSafeInteger(value))) return 'ERROR: Invalid coordinates';
+    if (point[1] < 0 || point[4] < 0) return 'ERROR: Cannot build below ground';
     const id = Number(args[6]);
     if (!/^\d+$/.test(args[6]) || id > 56) return 'ERROR: Invalid block ID (0–56)';
     if (args.length > 8 || (args.length === 8 && args[7] !== 'true')) return 'ERROR: Invalid arguments';
@@ -241,7 +250,160 @@ function fill(args) {
     if (jobs.length === 1) build();
 }
 
-const commands = new Map([['fill', fill]]);
+let database = null;
+let ready = false;
+let dirty = false;
+let revision = 0;
+let timer = 0;
+let loading = false;
+
+function snapshot() {
+    const blocks = [];
+    parts.forEach((part, type) => part.cells.forEach(cell => blocks.push([cell.x, cell.y, cell.z, type + 1])));
+    return { version: 1, blocks };
+}
+
+function verify(data) {
+    if (!data || data.version !== 1 || !Array.isArray(data.blocks)) throw Error();
+    const seen = new Set();
+    for (const block of data.blocks) {
+        if (!Array.isArray(block) || block.length !== 4 || !block.every(Number.isSafeInteger) || block[1] < 0 || block[3] < 1 || block[3] > files.length) throw Error();
+        const id = key(block[0], block[1], block[2]);
+        if (seen.has(id)) throw Error();
+        seen.add(id);
+    }
+    return data.blocks;
+}
+
+function persist() {
+    if (!ready || !database || !dirty || loading || jobs.length) return;
+    try {
+        const mark = revision;
+        const store = database.transaction('world', 'readwrite');
+        store.objectStore('world').put(snapshot(), 'current');
+        store.oncomplete = () => { if (revision === mark) dirty = false; };
+    } catch { }
+}
+
+function queue() {
+    dirty = true;
+    revision++;
+    clearTimeout(timer);
+    if (ready && database && !loading && !jobs.length) timer = setTimeout(persist, 650);
+}
+
+async function replace(blocks, save = true) {
+    loading = true;
+    let next = [];
+    try {
+        const counts = Array(files.length).fill(0);
+        blocks.forEach(block => counts[block[3] - 1]++);
+        next = parts.map(part => ({ cells: [], limit: 0, mesh: null, material: part.material }));
+        const fresh = new Map();
+        next.forEach((part, type) => {
+            if (!counts[type]) return;
+            part.limit = counts[type];
+            part.mesh = new THREE.InstancedMesh(shape, part.material, part.limit);
+            part.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        });
+        for (let i = 0; i < blocks.length; i++) {
+            const [x, y, z, id] = blocks[i];
+            const type = id - 1, part = next[type];
+            fresh.set(key(x, y, z), { type, index: part.cells.length });
+            part.cells.push({ x, y, z });
+            stamp(part, part.cells.length - 1);
+            if (i && i % 2000 === 0) await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+        next.forEach(part => { if (part.mesh) finish(part); });
+        jobs.length = 0;
+        cancelAnimationFrame(pending);
+        pending = 0;
+        clearTimeout(timer);
+        const previous = parts;
+        parts = next;
+        world = fresh;
+        previous.forEach(part => { if (part.mesh) { scene.remove(part.mesh); part.mesh.dispose(); } });
+        parts.forEach(part => { if (part.mesh) scene.add(part.mesh); });
+        if (save) dirty = true;
+    } catch (failure) {
+        next.forEach(part => { if (part.mesh) part.mesh.dispose(); });
+        throw failure;
+    } finally {
+        loading = false;
+        if (dirty) queue();
+    }
+}
+
+try {
+    if (typeof indexedDB !== 'undefined') {
+        const request = indexedDB.open('bound', 1);
+        request.onupgradeneeded = () => request.result.createObjectStore('world');
+        request.onsuccess = () => {
+            database = request.result;
+            try {
+                const read = database.transaction('world').objectStore('world').get('current');
+                read.onsuccess = async () => {
+                    if (read.result && !dirty && !jobs.length && !loading) {
+                        try { await replace(verify(read.result), false); } catch { }
+                    }
+                    ready = true;
+                    if (dirty) queue();
+                };
+                read.onerror = () => { ready = true; if (dirty) queue(); };
+            } catch { ready = true; if (dirty) queue(); }
+        };
+    }
+} catch { }
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearTimeout(timer); persist(); }
+});
+
+function save(args) {
+    if (args.length > 1 || (args[0] && !/^[a-z0-9_-]+$/i.test(args[0]))) return 'ERROR: Invalid filename';
+    if (loading || jobs.length) return 'ERROR: World is busy';
+    try {
+        const blob = new Blob([JSON.stringify(snapshot())], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${args[0] || 'world'}.bound`;
+        link.click();
+        requestAnimationFrame(() => URL.revokeObjectURL(url));
+    } catch { return 'ERROR: Unable to save world'; }
+}
+
+const picker = document.createElement('input');
+picker.type = 'file';
+picker.accept = '.bound';
+picker.hidden = true;
+document.body.append(picker);
+
+function load(args) {
+    if (args.length) return 'ERROR: Invalid arguments';
+    if (loading) return 'ERROR: World is busy';
+    close();
+    picker.value = '';
+    picker.click();
+}
+
+picker.addEventListener('change', async () => {
+    const file = picker.files[0];
+    if (!file) return;
+    try {
+        if (!/\.bound$/i.test(file.name)) throw Error();
+        const blocks = verify(JSON.parse(await file.text()));
+        if (loading) throw Error();
+        await replace(blocks);
+    } catch {
+        command.hidden = false;
+        error.textContent = 'ERROR: Invalid world file';
+        error.hidden = false;
+        input.focus();
+    }
+});
+
+const commands = new Map([['fill', fill], ['save', save], ['load', load]]);
 
 function close() {
     command.hidden = true;
