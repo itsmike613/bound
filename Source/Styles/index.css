@@ -141,59 +141,50 @@ header p {
     filter: brightness(1.14)
 }
 
-#chosen {
+.info {
     flex: none;
     display: flex;
     justify-content: space-between;
-    gap: 6px;
-    padding: 12px 4px 13px;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 4px;
     border-top: 1px solid #343941;
     font-size: 10px;
     letter-spacing: .055em
 }
 
-#label {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: #dce5ef
+.info span:first-child {
+    color: #8794a3
 }
 
-#number {
-    flex: none;
-    color: #81909f
+.info span:last-child {
+    color: #e5e9ef;
+    text-align: right
 }
 
-footer {
-    flex: none
-}
-
-footer .heading {
-    margin-bottom: 7px
-}
-
-#mode {
-    color: #9ee8ee
-}
-
-.help {
-    display: flex;
-    justify-content: space-between;
-    gap: 6px;
-    padding: 5px 4px;
+#coords {
     font-size: 9px;
-    line-height: 1.15;
-    color: #aab3c0;
-    white-space: nowrap
+    letter-spacing: 0;
+    overflow-wrap: anywhere
 }
 
-.help span:first-child {
-    color: #d9e4ee
+#help {
+    flex: none;
+    display: block;
+    margin-top: 12px;
+    padding: 10px 4px;
+    border: 1px solid #343941;
+    background: #16191f;
+    color: #e5e9ef;
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-align: center;
+    text-decoration: none
 }
 
-.help span:last-child {
-    text-align: right;
-    color: #7e8a98
+#help:hover {
+    background: #292f38;
+    border-color: #68778a
 }
 
 #view {
@@ -245,6 +236,52 @@ footer .heading {
     left: 1px
 }
 
+#command, #error {
+    position: absolute;
+    z-index: 3;
+    left: 0;
+    right: 0;
+    padding: 10px 14px;
+    background: rgba(13, 15, 19, .86);
+    font-size: 12px;
+    letter-spacing: .035em
+}
+
+#command {
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border-top: 1px solid #343941
+}
+
+#command strong {
+    color: #e5e9ef;
+    font-size: 14px
+}
+
+#input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #e5e9ef;
+    font: inherit;
+    user-select: text
+}
+
+#error {
+    top: 0;
+    border-bottom: 1px solid #343941;
+    color: #f4b7b7
+}
+
+#command[hidden], #error[hidden] {
+    display: none
+}
+
 @media(max-width:680px) {
     aside {
         flex-basis: 190px;
@@ -259,13 +296,12 @@ footer .heading {
         padding-bottom: 12px
     }
 
-    .heading, #chosen {
+    .heading, .info {
         font-size: 9px
     }
 
-    .help {
-        font-size: 8px;
-        padding: 4px 1px
+    #coords {
+        font-size: 8px
     }
 
     #palette {
@@ -292,11 +328,31 @@ footer .heading {
         padding: 5px 3px
     }
 
-    #chosen {
+    .info {
         padding: 6px 3px
     }
 
-    .help {
-        padding: 2px 3px
+    #help {
+        margin-top: 6px;
+        padding: 6px 3px
     }
+}
+
+#guide {
+    width: min(100%, 560px);
+    height: 100dvh;
+    margin: auto;
+    padding: 24px 16px;
+    overflow-y: auto
+}
+
+#guide .heading:not(:first-of-type) {
+    margin-top: 24px
+}
+
+#guide p {
+    padding: 0 4px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #aab3c0
 }

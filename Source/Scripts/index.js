@@ -14,6 +14,10 @@ const view = document.querySelector('#view');
 const palette = document.querySelector('#palette');
 const label = document.querySelector('#label');
 const number = document.querySelector('#number');
+const coords = document.querySelector('#coords');
+const command = document.querySelector('#command');
+const input = document.querySelector('#input');
+const error = document.querySelector('#error');
 const mode = document.querySelector('#mode');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#030406');
@@ -66,17 +70,17 @@ function grow(part) {
     finish(part);
 }
 
-function add(x, y, z, type) {
+function add(x, y, z, type, batch = false) {
     const id = key(x, y, z);
-    if (y < 0 || world.has(id)) return;
+    if (world.has(id)) return;
     const part = parts[type];
     world.set(id, { type, index: part.cells.length });
     part.cells.push({ x, y, z });
     if (part.cells.length > part.limit) grow(part);
-    else { stamp(part, part.cells.length - 1); finish(part); }
+    else { stamp(part, part.cells.length - 1); if (!batch) finish(part); }
 }
 
-function remove(x, y, z) {
+function remove(x, y, z, batch = false) {
     const id = key(x, y, z);
     const item = world.get(id);
     if (!item) return;
@@ -90,7 +94,7 @@ function remove(x, y, z) {
         stamp(part, item.index);
     }
 
-    finish(part);
+    if (!batch) finish(part);
 }
 
 function select(index) {
@@ -121,7 +125,7 @@ files.forEach((name, index) => {
 
 select(0);
 
-const body = new THREE.Vector3(0, 0, 3);
+const body = new THREE.Vector3(SIZE / 2, 0, SIZE / 2);
 const speed = new THREE.Vector3();
 const keys = new Set();
 const dir = new THREE.Vector3();
@@ -194,9 +198,72 @@ function destroy() {
     if (hit && hit.block) remove(hit.x, hit.y, hit.z);
 }
 
+const jobs = [];
+
+function build() {
+    const job = jobs[0];
+    const touched = new Set();
+
+    for (let i = 0; i < 1000 && job.x <= job.high[0]; i++) {
+        const item = world.get(key(job.x, job.y, job.z));
+        if (!item || item.type !== job.type) {
+            if (item) { touched.add(parts[item.type]); remove(job.x, job.y, job.z, true); }
+            if (job.type >= 0) { add(job.x, job.y, job.z, job.type, true); touched.add(parts[job.type]); }
+        }
+        if (++job.z > job.high[2]) {
+            job.z = job.low[2];
+            if (++job.y > job.high[1]) {
+                job.y = job.low[1];
+                job.x++;
+            }
+        }
+    }
+
+    touched.forEach(finish);
+    if (job.x > job.high[0]) jobs.shift();
+    if (jobs.length) requestAnimationFrame(build);
+}
+
+function fill(args) {
+    if (args.length < 6) return 'ERROR: Expected 6 coordinates';
+    if (args.slice(0, 6).some(value => !/^-?\d+$/.test(value))) return 'ERROR: Invalid coordinates';
+    const point = args.slice(0, 6).map(Number);
+    if (point.some(value => !Number.isSafeInteger(value))) return 'ERROR: Invalid coordinates';
+    const id = Number(args[6]);
+    if (!/^\d+$/.test(args[6]) || id > 56) return 'ERROR: Invalid block ID (0–56)';
+    if (args.length > 8 || (args.length === 8 && args[7] !== 'true')) return 'ERROR: Invalid arguments';
+    const low = [Math.min(point[0], point[3]), Math.min(point[1], point[4]), Math.min(point[2], point[5])];
+    const high = [Math.max(point[0], point[3]), Math.max(point[1], point[4]), Math.max(point[2], point[5])];
+    const total = (high[0] - low[0] + 1) * (high[1] - low[1] + 1) * (high[2] - low[2] + 1);
+    if (!Number.isSafeInteger(total)) return 'ERROR: Invalid coordinates';
+    if (total > 500 && args[7] !== 'true') return 'ERROR: Maximum 500 blocks exceeded';
+    jobs.push({ low, high, type: id - 1, x: low[0], y: low[1], z: low[2] });
+    if (jobs.length === 1) build();
+}
+
+const commands = new Map([['fill', fill]]);
+
+function close() {
+    command.hidden = true;
+    error.hidden = true;
+    input.blur();
+}
+
+command.addEventListener('submit', event => {
+    event.preventDefault();
+    const words = input.value.trim().replace(/^\/\s*/, '').split(/\s+/);
+    const run = commands.get(words.shift().toLowerCase());
+    const message = run ? run(words) : 'ERROR: Unknown command';
+    if (message) { error.textContent = message; error.hidden = false; }
+    else close();
+});
+
+input.addEventListener('input', () => { error.hidden = true; });
+
 canvas.addEventListener('contextmenu', event => event.preventDefault());
 canvas.addEventListener('mousedown', event => {
     event.preventDefault();
+    if (!command.hidden) return;
     if (document.pointerLockElement !== canvas) { canvas.requestPointerLock(); return; }
     if (event.button === 0 || event.button === 2) {
         buttons.add(event.button);
@@ -215,14 +282,30 @@ document.addEventListener('mousemove', event => {
 });
 
 document.addEventListener('keydown', event => {
+    if (!command.hidden) {
+        if (event.code === 'Escape') { event.preventDefault(); close(); }
+        if (event.code === 'Enter') { event.preventDefault(); command.requestSubmit(); }
+        return;
+    }
+    if (event.key === '/' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault();
+        keys.clear();
+        buttons.clear();
+        command.hidden = false;
+        if (document.pointerLockElement === canvas) document.exitPointerLock();
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        return;
+    }
     if (['Space', 'ArrowUp', 'ArrowDown', 'KeyQ', 'KeyE'].includes(event.code)) event.preventDefault();
+    const held = keys.has(event.code);
     keys.add(event.code);
-    if (event.repeat) return;
+    if (event.repeat || held) return;
     if (event.code === 'KeyQ') select(chosen - 1);
     if (event.code === 'KeyE') select(chosen + 1);
     if (event.code === 'Space') {
         const now = performance.now();
-        if (now - tap < 300) {
+        if (tap && now - tap < 300) {
             flying = !flying; speed.y = 0; tap = 0;
             mode.textContent = flying ? 'FLY' : 'WALK';
         } else {
@@ -237,6 +320,7 @@ document.addEventListener('keydown', event => {
 document.addEventListener('keyup', event => keys.delete(event.code));
 window.addEventListener('blur', () => { keys.clear(); buttons.clear(); });
 window.addEventListener('wheel', event => {
+    if (!command.hidden) return;
     event.preventDefault();
     if (event.deltaY) select(chosen + Math.sign(event.deltaY));
 }, { passive: false });
@@ -285,7 +369,13 @@ function frame(now) {
         if (speed.y < 0) grounded = true;
         speed.y = 0;
     }
+    if (!flying && grounded && keys.has('Space')) {
+        speed.y = 6.5;
+        grounded = false;
+    }
 
+    const position = `X: ${Math.floor(body.x / SIZE)} Y: ${Math.floor(body.y / SIZE)} Z: ${Math.floor(body.z / SIZE)}`;
+    if (coords.textContent !== position) coords.textContent = position;
     step *= Math.exp(-15 * dt);
     camera.position.set(body.x, body.y + EYE + step, body.z);
 

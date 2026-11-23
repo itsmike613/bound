@@ -28,19 +28,17 @@
             </header>
             <div class="heading"><span>BLOCKS</span><span>56 TOTAL</span></div>
             <div id="palette"></div>
-            <div id="chosen"><span id="label">WHITE / LIGHTEST</span><span id="number">01 / 56</span></div>
-            <footer>
-                <div class="heading"><span>CONTROLS</span><span id="mode">WALK</span></div>
-                <div class="help"><span>W A S D</span><span>MOVE</span></div>
-                <div class="help"><span>MOUSE</span><span>LOOK · CLICK TO LOCK</span></div>
-                <div class="help"><span>LEFT / RIGHT</span><span>BREAK / PLACE</span></div>
-                <div class="help"><span>WHEEL · Q / E</span><span>CHOOSE BLOCK</span></div>
-                <div class="help"><span>SPACE</span><span>JUMP · DOUBLE TAP FLY</span></div>
-                <div class="help"><span>SHIFT / ESC</span><span>DESCEND / UNLOCK</span></div>
-            </footer>
+            <div class="info"><span id="label">WHITE / LIGHTEST</span><span id="number">01 / 56</span></div>
+            <div class="info"><span>COORDINATES</span><span id="coords">X: 0 Y: 0 Z: 0</span></div>
+            <div class="info"><span>STATUS</span><span id="mode">WALK</span></div>
+            <a id="help" href="help.html">HELP</a>
         </aside>
         <main id="view">
             <div id="cross"></div>
+            <div id="error" hidden></div>
+            <form id="command" hidden>
+                <strong>/</strong><input id="input" type="text" autocomplete="off" spellcheck="false">
+            </form>
         </main>
     </div>
 
