@@ -1,10 +1,10 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
 
-const SIZE = .5;
-const REACH = 4.2;
-const EYE = .88;
-const HEIGHT = 1;
-const RADIUS = .22;
+const SIZE = 1;
+const REACH = 8.4;
+const EYE = 1.76;
+const HEIGHT = 2;
+const RADIUS = .44;
 const names = 'white grey black brown red orange yellow green blue purple pink'.split(' ');
 const shades = 'lightest light normal dark darkest'.split(' ');
 const files = names.flatMap(name => shades.map(shade => `${name}-${shade}`));
@@ -21,8 +21,8 @@ const error = document.querySelector('#error');
 const mode = document.querySelector('#mode');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#030406');
-scene.fog = new THREE.Fog('#030406', 24, 150);
-const camera = new THREE.PerspectiveCamera(75, 1, .05, 350);
+scene.fog = new THREE.Fog('#030406', 48, 300);
+const camera = new THREE.PerspectiveCamera(75, 1, .1, 700);
 camera.rotation.order = 'YXZ';
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -30,9 +30,9 @@ view.prepend(renderer.domElement);
 const canvas = renderer.domElement;
 scene.add(new THREE.AmbientLight(0xffffff, 1.1));
 const sun = new THREE.DirectionalLight(0xffffff, .62);
-sun.position.set(-4, 8, 6);
+sun.position.set(-8, 16, 12);
 scene.add(sun);
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.MeshBasicMaterial({ color: 0x16191e }));
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(3200, 3200), new THREE.MeshBasicMaterial({ color: 0x16191e }));
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 const shape = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
@@ -145,7 +145,7 @@ function blocked(x, y, z) {
     if (y < 0) return true;
 
     const min = [Math.floor((x - RADIUS) / SIZE), Math.floor(y / SIZE), Math.floor((z - RADIUS) / SIZE)];
-    const max = [Math.floor((x + RADIUS - .0001) / SIZE), Math.floor((y + HEIGHT - .0001) / SIZE), Math.floor((z + RADIUS - .0001) / SIZE)];
+    const max = [Math.floor((x + RADIUS - .0002) / SIZE), Math.floor((y + HEIGHT - .0002) / SIZE), Math.floor((z + RADIUS - .0002) / SIZE)];
 
     for (let a = min[0]; a <= max[0]; a++)for (let b = min[1]; b <= max[1]; b++)for (let c = min[2]; c <= max[2]; c++) {
         if (world.has(key(a, b, c))) return true;
@@ -310,7 +310,7 @@ document.addEventListener('keydown', event => {
             mode.textContent = flying ? 'FLY' : 'WALK';
         } else {
             if (!flying && grounded) {
-                speed.y = 6.5; grounded = false;
+                speed.y = 13; grounded = false;
             }
             tap = now;
         }
@@ -353,14 +353,14 @@ function frame(now) {
     const forward = Number(keys.has('KeyW')) - Number(keys.has('KeyS'));
     const right = Number(keys.has('KeyD')) - Number(keys.has('KeyA'));
     const length = Math.hypot(forward, right) || 1;
-    const pace = flying ? 5.8 : 4.5;
+    const pace = flying ? 11.6 : 9;
     const blend = 1 - Math.exp(-13 * dt);
     speed.x += ((right * Math.cos(yaw) - forward * Math.sin(yaw)) * pace / length - speed.x) * blend;
     speed.z += ((-right * Math.sin(yaw) - forward * Math.cos(yaw)) * pace / length - speed.z) * blend;
     if (flying) {
         const lift = Number(keys.has('Space')) - Number(keys.has('ShiftLeft') || keys.has('ShiftRight'));
         speed.y += (lift * pace - speed.y) * blend;
-    } else speed.y -= 18 * dt; // Hello World :P
+    } else speed.y -= 36 * dt; // Hello World :P
     const x = body.x + speed.x * dt, z = body.z + speed.z * dt, y = body.y + speed.y * dt;
     if (!move(x, body.z)) speed.x = 0;
     if (!move(body.x, z)) speed.z = 0;
@@ -370,7 +370,7 @@ function frame(now) {
         speed.y = 0;
     }
     if (!flying && grounded && keys.has('Space')) {
-        speed.y = 6.5;
+        speed.y = 13;
         grounded = false;
     }
 
