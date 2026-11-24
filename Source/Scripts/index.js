@@ -5,14 +5,26 @@ const REACH = 8.4;
 const EYE = 1.76;
 const HEIGHT = 2;
 const RADIUS = .44;
-const names = 'white grey black brown red orange yellow green blue purple pink'.split(' ');
-const shades = 'lightest light normal dark darkest'.split(' ');
-const files = names.flatMap(name => shades.map(shade => `${name}-${shade}`));
-files.push('transparent-outline');
+const ASSETS = [
+    'WHTLT', 'WHTLI', 'WHTNO', 'WHTDA', 'WHTDT',
+    'GRYLT', 'GRYLI', 'GRYNO', 'GRYDA', 'GRYDT',
+    'BLKLT', 'BLKLI', 'BLKNO', 'BLKDA', 'BLKDT',
+    'BRNLT', 'BRNLI', 'BRNNO', 'BRNDA', 'BRNDT',
+    'REDLT', 'REDLI', 'REDNO', 'REDDA', 'REDDT',
+    'ORGLT', 'ORGLI', 'ORGNO', 'ORGDA', 'ORGDT',
+    'YELLT', 'YELLI', 'YELNO', 'YELDA', 'YELDT',
+    'GRNLT', 'GRNLI', 'GRNNO', 'GRNDA', 'GRNDT',
+    'BLULT', 'BLULI', 'BLUNO', 'BLUDA', 'BLUDT',
+    'PURLT', 'PURLI', 'PURNO', 'PURDA', 'PURDT',
+    'PNKLT', 'PNKLI', 'PNKNO', 'PNKDA', 'PNKDT',
+    'GLASS'
+];
+const CLEAR = ['GLASS'];
+const types = new Map(ASSETS.map((id, index) => [id, index]));
 
 const view = document.querySelector('#view');
 const palette = document.querySelector('#palette');
-const label = document.querySelector('#label');
+const total = document.querySelector('#total');
 const number = document.querySelector('#number');
 const coords = document.querySelector('#coords');
 const command = document.querySelector('#command');
@@ -99,24 +111,23 @@ function remove(x, y, z, batch = false) {
 }
 
 function select(index) {
-    chosen = (index + files.length) % files.length;
+    chosen = (index + ASSETS.length) % ASSETS.length;
     tiles.forEach((tile, index) => tile.classList.toggle('selected', index === chosen));
-    label.textContent = files[chosen].replace('-', ' / ').toUpperCase();
-    number.textContent = `${String(chosen + 1).padStart(2, '0')} / 56`;
+    number.textContent = ASSETS[chosen];
 }
 
-files.forEach((name, index) => {
+ASSETS.forEach((name, index) => {
     const path = `./Source/Assets/${name}.png`;
     const tex = new THREE.TextureLoader().load(path);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.magFilter = THREE.NearestFilter;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    parts.push({ cells: [], limit: 0, mesh: null, material: new THREE.MeshLambertMaterial({ map: tex, alphaTest: index === 55 ? .5 : 0 }) });
+    parts.push({ cells: [], limit: 0, mesh: null, material: new THREE.MeshLambertMaterial({ map: tex, alphaTest: CLEAR.includes(name) ? .5 : 0 }) });
     const tile = document.createElement('button');
     tile.className = 'tile';
     tile.type = 'button';
-    tile.title = name.replace('-', ' / ');
+    tile.title = name;
     tile.style.setProperty('--img', `url("${new URL(path, location.href)}")`);
     tile.innerHTML = '<span class="cube"><span class="face front"></span><span class="face right"></span><span class="face top"></span></span>';
     tile.addEventListener('click', () => select(index));
@@ -124,6 +135,7 @@ files.forEach((name, index) => {
     tiles.push(tile);
 });
 
+total.textContent = `${ASSETS.length} TOTAL`;
 select(0);
 
 const body = new THREE.Vector3(SIZE / 2, 0, SIZE / 2);
@@ -238,15 +250,15 @@ function fill(args) {
     const point = args.slice(0, 6).map(Number);
     if (point.some(value => !Number.isSafeInteger(value))) return 'ERROR: Invalid coordinates';
     if (point[1] < 0 || point[4] < 0) return 'ERROR: Cannot build below ground';
-    const id = Number(args[6]);
-    if (!/^\d+$/.test(args[6]) || id > 56) return 'ERROR: Invalid block ID (0–56)';
+    const id = args[6];
+    if (id !== '0' && !types.has(id)) return 'ERROR: Invalid block ID (0 or five-letter ID)';
     if (args.length > 8 || (args.length === 8 && args[7] !== 'true')) return 'ERROR: Invalid arguments';
     const low = [Math.min(point[0], point[3]), Math.min(point[1], point[4]), Math.min(point[2], point[5])];
     const high = [Math.max(point[0], point[3]), Math.max(point[1], point[4]), Math.max(point[2], point[5])];
     const total = (high[0] - low[0] + 1) * (high[1] - low[1] + 1) * (high[2] - low[2] + 1);
     if (!Number.isSafeInteger(total)) return 'ERROR: Invalid coordinates';
     if (total > 500 && args[7] !== 'true') return 'ERROR: Maximum 500 blocks exceeded';
-    jobs.push({ low, high, type: id - 1, x: low[0], y: low[1], z: low[2] });
+    jobs.push({ low, high, type: id === '0' ? -1 : types.get(id), x: low[0], y: low[1], z: low[2] });
     if (jobs.length === 1) build();
 }
 
@@ -259,7 +271,7 @@ let loading = false;
 
 function snapshot() {
     const blocks = [];
-    parts.forEach((part, type) => part.cells.forEach(cell => blocks.push([cell.x, cell.y, cell.z, type + 1])));
+    parts.forEach((part, type) => part.cells.forEach(cell => blocks.push([cell.x, cell.y, cell.z, ASSETS[type]])));
     return { version: 1, blocks };
 }
 
@@ -267,7 +279,8 @@ function verify(data) {
     if (!data || data.version !== 1 || !Array.isArray(data.blocks)) throw Error();
     const seen = new Set();
     for (const block of data.blocks) {
-        if (!Array.isArray(block) || block.length !== 4 || !block.every(Number.isSafeInteger) || block[1] < 0 || block[3] < 1 || block[3] > files.length) throw Error();
+        if (!Array.isArray(block) || block.length !== 4 || !block.slice(0, 3).every(Number.isSafeInteger) || block[1] < 0 || typeof block[3] !== 'string') throw Error();
+        if (!types.has(block[3])) throw Error('ERROR: World contains an outdated block');
         const id = key(block[0], block[1], block[2]);
         if (seen.has(id)) throw Error();
         seen.add(id);
@@ -296,8 +309,8 @@ async function replace(blocks, save = true) {
     loading = true;
     let next = [];
     try {
-        const counts = Array(files.length).fill(0);
-        blocks.forEach(block => counts[block[3] - 1]++);
+        const counts = Array(ASSETS.length).fill(0);
+        blocks.forEach(block => counts[types.get(block[3])]++);
         next = parts.map(part => ({ cells: [], limit: 0, mesh: null, material: part.material }));
         const fresh = new Map();
         next.forEach((part, type) => {
@@ -308,7 +321,7 @@ async function replace(blocks, save = true) {
         });
         for (let i = 0; i < blocks.length; i++) {
             const [x, y, z, id] = blocks[i];
-            const type = id - 1, part = next[type];
+            const type = types.get(id), part = next[type];
             fresh.set(key(x, y, z), { type, index: part.cells.length });
             part.cells.push({ x, y, z });
             stamp(part, part.cells.length - 1);
@@ -395,9 +408,9 @@ picker.addEventListener('change', async () => {
         const blocks = verify(JSON.parse(await file.text()));
         if (loading) throw Error();
         await replace(blocks);
-    } catch {
+    } catch (failure) {
         command.hidden = false;
-        error.textContent = 'ERROR: Invalid world file';
+        error.textContent = failure.message === 'ERROR: World contains an outdated block' ? failure.message : 'ERROR: Invalid world file';
         error.hidden = false;
         input.focus();
     }
@@ -482,7 +495,7 @@ document.addEventListener('keydown', event => {
 document.addEventListener('keyup', event => keys.delete(event.code));
 window.addEventListener('blur', () => { keys.clear(); buttons.clear(); });
 window.addEventListener('wheel', event => {
-    if (!command.hidden) return;
+    if (palette.contains(event.target) || !command.hidden) return;
     event.preventDefault();
     if (event.deltaY) select(chosen + Math.sign(event.deltaY));
 }, { passive: false });
