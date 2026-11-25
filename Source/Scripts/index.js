@@ -427,6 +427,20 @@ document.addEventListener('visibilitychange', () => {
     if (document.hidden) { clearTimeout(timer); persist(); }
 });
 
+function screenshot(args) {
+    if (args.length > 1 || (args[0] && !/^[a-z0-9_-]+$/i.test(args[0]))) return 'ERROR: Invalid filename';
+    const visible = marker.visible;
+    try {
+        marker.visible = false;
+        renderer.render(scene, camera);
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `${args[0] || 'screenshot'}.png`;
+        link.click();
+    } catch { return 'ERROR: Unable to take screenshot'; }
+    finally { marker.visible = visible; }
+}
+
 function save(args) {
     if (args.length > 1 || (args[0] && !/^[a-z0-9_-]+$/i.test(args[0]))) return 'ERROR: Invalid filename';
     if (loading || jobs.length) return 'ERROR: World is busy';
@@ -498,7 +512,7 @@ async function reset(args) {
     }
 }
 
-const commands = new Map([['fill', fill], ['save', save], ['load', load], ['circle', args => sculpt(args, 'circle')], ['square', args => sculpt(args, 'square')], ['sphere', args => sculpt(args, 'sphere')], ['teleport', teleport], ['spawn', spawn], ['new', reset]]);
+const commands = new Map([['fill', fill], ['save', save], ['load', load], ['circle', args => sculpt(args, 'circle')], ['square', args => sculpt(args, 'square')], ['sphere', args => sculpt(args, 'sphere')], ['teleport', teleport], ['spawn', spawn], ['new', reset], ['screenshot', screenshot]]);
 
 function close() {
     command.hidden = true;
