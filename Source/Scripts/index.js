@@ -6,20 +6,20 @@ const EYE = 1.76;
 const HEIGHT = 2;
 const RADIUS = .44;
 const ASSETS = [
-    'WHTLT', 'WHTLI', 'WHTNO', 'WHTDA', 'WHTDT',
-    'GRYLT', 'GRYLI', 'GRYNO', 'GRYDA', 'GRYDT',
-    'BLKLT', 'BLKLI', 'BLKNO', 'BLKDA', 'BLKDT',
-    'BRNLT', 'BRNLI', 'BRNNO', 'BRNDA', 'BRNDT',
-    'REDLT', 'REDLI', 'REDNO', 'REDDA', 'REDDT',
-    'ORGLT', 'ORGLI', 'ORGNO', 'ORGDA', 'ORGDT',
-    'YELLT', 'YELLI', 'YELNO', 'YELDA', 'YELDT',
-    'GRNLT', 'GRNLI', 'GRNNO', 'GRNDA', 'GRNDT',
-    'BLULT', 'BLULI', 'BLUNO', 'BLUDA', 'BLUDT',
-    'PURLT', 'PURLI', 'PURNO', 'PURDA', 'PURDT',
-    'PNKLT', 'PNKLI', 'PNKNO', 'PNKDA', 'PNKDT',
-    'GLASS'
+    'white_lightest', 'white_light', 'white_normal', 'white_dark', 'white_darkest',
+    'gray_lightest', 'gray_light', 'gray_normal', 'gray_dark', 'gray_darkest',
+    'black_lightest', 'black_light', 'black_normal', 'black_dark', 'black_darkest',
+    'brown_lightest', 'brown_light', 'brown_normal', 'brown_dark', 'brown_darkest',
+    'red_lightest', 'red_light', 'red_normal', 'red_dark', 'red_darkest',
+    'orange_lightest', 'orange_light', 'orange_normal', 'orange_dark', 'orange_darkest',
+    'yellow_lightest', 'yellow_light', 'yellow_normal', 'yellow_dark', 'yellow_darkest',
+    'green_lightest', 'green_light', 'green_normal', 'green_dark', 'green_darkest',
+    'blue_lightest', 'blue_light', 'blue_normal', 'blue_dark', 'blue_darkest',
+    'purple_lightest', 'purple_light', 'purple_normal', 'purple_dark', 'purple_darkest',
+    'pink_lightest', 'pink_light', 'pink_normal', 'pink_dark', 'pink_darkest',
+    'glass'
 ];
-const CLEAR = ['GLASS'];
+const CLEAR = ['glass'];
 const types = new Map(ASSETS.map((id, index) => [id, index]));
 
 const view = document.querySelector('#view');
@@ -223,10 +223,12 @@ function build() {
     const touched = new Set();
 
     for (let i = 0; i < 1000 && job.x <= job.high[0]; i++) {
-        const item = world.get(key(job.x, job.y, job.z));
-        if (!item || item.type !== job.type) {
-            if (item) { touched.add(parts[item.type]); remove(job.x, job.y, job.z, true); }
-            if (job.type >= 0) { add(job.x, job.y, job.z, job.type, true); touched.add(parts[job.type]); }
+        if (!job.test || job.test(job.x, job.y, job.z)) {
+            const item = world.get(key(job.x, job.y, job.z));
+            if (!item || item.type !== job.type) {
+                if (item) { touched.add(parts[item.type]); remove(job.x, job.y, job.z, true); }
+                if (job.type >= 0) { add(job.x, job.y, job.z, job.type, true); touched.add(parts[job.type]); }
+            }
         }
         if (++job.z > job.high[2]) {
             job.z = job.low[2];
@@ -251,7 +253,7 @@ function fill(args) {
     if (point.some(value => !Number.isSafeInteger(value))) return 'ERROR: Invalid coordinates';
     if (point[1] < 0 || point[4] < 0) return 'ERROR: Cannot build below ground';
     const id = args[6];
-    if (id !== '0' && !types.has(id)) return 'ERROR: Invalid block ID (0 or five-letter ID)';
+    if (id !== '0' && !types.has(id)) return 'ERROR: Invalid block ID (0 or descriptive ID)';
     if (args.length > 8 || (args.length === 8 && args[7] !== 'true')) return 'ERROR: Invalid arguments';
     const low = [Math.min(point[0], point[3]), Math.min(point[1], point[4]), Math.min(point[2], point[5])];
     const high = [Math.max(point[0], point[3]), Math.max(point[1], point[4]), Math.max(point[2], point[5])];
@@ -260,6 +262,57 @@ function fill(args) {
     if (total > 500 && args[7] !== 'true') return 'ERROR: Maximum 500 blocks exceeded';
     jobs.push({ low, high, type: id === '0' ? -1 : types.get(id), x: low[0], y: low[1], z: low[2] });
     if (jobs.length === 1) build();
+}
+
+function sculpt(args, kind) {
+    if (loading) return 'ERROR: World is busy';
+    const sphere = kind === 'sphere';
+    const length = sphere ? 3 : 4;
+    if (args.length < length || args.length > length + 1 || (args.length > length && args[length] !== 'true')) return 'ERROR: Invalid arguments';
+    if (args.slice(0, length - 2).some(value => !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)))) return 'ERROR: Invalid dimensions';
+    const radius = Number(args[0]), height = sphere ? radius * 2 + 1 : Number(args[1]);
+    if (radius < (kind === 'square' ? 0 : 2) || height < 1) return 'ERROR: Invalid dimensions';
+    const id = args[length - 2], mode = args[length - 1];
+    if (!types.has(id)) return 'ERROR: Invalid block ID';
+    if (mode !== 'h' && mode !== 's') return 'ERROR: Expected h or s';
+    const center = [Math.floor(body.x / SIZE), Math.floor(body.y / SIZE), Math.floor(body.z / SIZE)];
+    const low = [center[0] - radius, center[1] - (sphere ? radius : 0), center[2] - radius];
+    const high = [center[0] + radius, low[1] + height - 1, center[2] + radius];
+    if (low[1] < 0) return 'ERROR: Cannot build below ground';
+    if ((radius * 2 + 1) ** 2 * height > 250000 || [...low, ...high].some(value => !Number.isSafeInteger(value))) return 'ERROR: Shape is too large';
+    const inside = (x, y, z) => {
+        if (y < low[1] || y > high[1]) return false;
+        const a = x - center[0], b = y - center[1], c = z - center[2];
+        if (kind === 'square') return Math.abs(a) <= radius && Math.abs(c) <= radius;
+        return a * a + c * c + (sphere ? b * b : 0) <= radius * radius;
+    };
+    const test = (x, y, z) => inside(x, y, z) && (mode === 's' || !inside(x - 1, y, z) || !inside(x + 1, y, z) || !inside(x, y, z - 1) || !inside(x, y, z + 1) || (sphere && (!inside(x, y - 1, z) || !inside(x, y + 1, z))));
+    if (args[length] !== 'true') {
+        let total = 0;
+        for (let x = low[0]; x <= high[0]; x++)for (let y = low[1]; y <= high[1]; y++)for (let z = low[2]; z <= high[2]; z++) {
+            if (test(x, y, z) && ++total > 500) return 'ERROR: Maximum 500 blocks exceeded';
+        }
+    }
+    jobs.push({ low, high, type: types.get(id), test, x: low[0], y: low[1], z: low[2] });
+    if (jobs.length === 1) build();
+}
+
+function teleport(args) {
+    if (loading || jobs.length) return 'ERROR: World is busy';
+    if (args.length !== 3 || args.some(value => !/^-?\d+$/.test(value) || Math.abs(Number(value)) > 1000000)) return 'ERROR: Invalid coordinates';
+    const [x, y, z] = args.map(Number);
+    if (y < 0) return 'ERROR: Cannot teleport below ground';
+    const a = (x + .5) * SIZE, b = y * SIZE, c = (z + .5) * SIZE;
+    if (blocked(a, b, c)) return 'ERROR: Destination is occupied';
+    body.set(a, b, c);
+    speed.set(0, 0, 0);
+    step = 0;
+    grounded = !flying && blocked(a, b - .0002, c);
+}
+
+function spawn(args) {
+    if (args.length) return 'ERROR: Invalid arguments';
+    return teleport(['0', '0', '0']);
 }
 
 let database = null;
@@ -288,13 +341,14 @@ function verify(data) {
     return data.blocks;
 }
 
-function persist() {
-    if (!ready || !database || !dirty || loading || jobs.length) return;
+function persist(data) {
+    if (!ready || !database || (!data && (!dirty || loading || jobs.length))) return;
     try {
         const mark = revision;
         const store = database.transaction('world', 'readwrite');
-        store.objectStore('world').put(snapshot(), 'current');
+        store.objectStore('world').put(data || snapshot(), 'current');
         store.oncomplete = () => { if (revision === mark) dirty = false; };
+        return store;
     } catch { }
 }
 
@@ -351,6 +405,7 @@ try {
     if (typeof indexedDB !== 'undefined') {
         const request = indexedDB.open('bound', 1);
         request.onupgradeneeded = () => request.result.createObjectStore('world');
+        request.onerror = () => { ready = true; };
         request.onsuccess = () => {
             database = request.result;
             try {
@@ -366,7 +421,7 @@ try {
             } catch { ready = true; if (dirty) queue(); }
         };
     }
-} catch { }
+} catch { ready = true; }
 
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) { clearTimeout(timer); persist(); }
@@ -416,7 +471,34 @@ picker.addEventListener('change', async () => {
     }
 });
 
-const commands = new Map([['fill', fill], ['save', save], ['load', load]]);
+async function reset(args) {
+    if (args.length !== 1 || args[0] !== 'itsmike613') return 'ERROR: Are you sure? Type /new itsmike613 to reset this world';
+    if (loading || (!ready && typeof indexedDB !== 'undefined')) return 'ERROR: World is busy';
+    if (!database && typeof indexedDB !== 'undefined') return 'ERROR: Unable to reset world';
+    loading = true;
+    clearTimeout(timer);
+    cancelAnimationFrame(pending);
+    pending = 0;
+    try {
+        if (database) {
+            const store = persist({ version: 1, blocks: [] });
+            if (!store) throw Error();
+            await new Promise((resolve, reject) => {
+                store.addEventListener('complete', resolve);
+                store.addEventListener('abort', reject);
+            });
+        }
+        dirty = false;
+        await replace([], false);
+    } catch {
+        loading = false;
+        if (jobs.length) pending = requestAnimationFrame(build);
+        if (dirty) queue();
+        return 'ERROR: Unable to reset world';
+    }
+}
+
+const commands = new Map([['fill', fill], ['save', save], ['load', load], ['circle', args => sculpt(args, 'circle')], ['square', args => sculpt(args, 'square')], ['sphere', args => sculpt(args, 'sphere')], ['teleport', teleport], ['spawn', spawn], ['new', reset]]);
 
 function close() {
     command.hidden = true;
@@ -424,11 +506,12 @@ function close() {
     input.blur();
 }
 
-command.addEventListener('submit', event => {
+command.addEventListener('submit', async event => {
     event.preventDefault();
     const words = input.value.trim().replace(/^\/\s*/, '').split(/\s+/);
     const run = commands.get(words.shift().toLowerCase());
-    const message = run ? run(words) : 'ERROR: Unknown command';
+    const result = run ? run(words) : 'ERROR: Unknown command';
+    const message = result instanceof Promise ? await result : result;
     if (message) { error.textContent = message; error.hidden = false; }
     else close();
 });
@@ -440,6 +523,10 @@ canvas.addEventListener('mousedown', event => {
     event.preventDefault();
     if (!command.hidden) return;
     if (document.pointerLockElement !== canvas) { canvas.requestPointerLock(); return; }
+    if (event.button === 1) {
+        const hit = aim();
+        if (hit && hit.block) select(world.get(key(hit.x, hit.y, hit.z)).type);
+    }
     if (event.button === 0 || event.button === 2) {
         buttons.add(event.button);
         if (event.button === 0) destroy(); else place();

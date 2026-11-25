@@ -30,6 +30,7 @@
         <div class="info"><span>MOUSE</span><span>LOOK · CLICK TO LOCK</span></div>
         <div class="info"><span>LEFT CLICK</span><span>BREAK BLOCK</span></div>
         <div class="info"><span>RIGHT CLICK</span><span>PLACE BLOCK</span></div>
+        <div class="info"><span>MIDDLE CLICK</span><span>PICK BLOCK</span></div>
         <div class="info"><span>WHEEL · Q / E</span><span>CHOOSE BLOCK</span></div>
         <div class="info"><span>SPACE</span><span>JUMP · DOUBLE TAP TO FLY</span></div>
         <div class="info"><span>SHIFT</span><span>DESCEND WHILE FLYING</span></div>
@@ -38,9 +39,27 @@
         <div class="info"><span>ENTER</span><span>EXECUTE COMMAND</span></div>
         <div class="heading"><span>COMMANDS</span></div>
         <p><b>/fill x y z x y z id [true]</b></p>
-        <p>Fill the area between two block coordinates, including both corners. Use five-letter block IDs to choose a block, or 0 to remove blocks. The limit is 500 blocks unless you add true.</p>
-        <p>EXAMPLE: /fill 0 0 0 4 0 4 GRNLT</p>
-        <p>Creates a 5×5 platform of GRNLT blocks at coordinates 0, 0, 0.</p>
+        <p>Fill the area between two block coordinates, including both corners. Use descriptive block IDs to choose a block, or 0 to remove blocks. The limit is 500 blocks unless you add true.</p>
+        <p>EXAMPLE: /fill 0 0 0 4 0 4 green_lightest</p>
+        <p>Creates a 5×5 platform of green_lightest blocks at coordinates 0, 0, 0.</p>
+        <p><b>/circle radius height id h|s [true]</b></p>
+        <p>Build a hollow circular wall (h) or solid cylinder (s), centered on your block coordinates and extending upward from your feet. The minimum radius is 2. The limit is 500 blocks unless you add true.</p>
+        <p>EXAMPLE: /circle 5 4 green_lightest h</p>
+        <p>Creates a hollow circular wall with a radius of 5 and a height of 4 blocks using green_lightest.</p>
+        <p><b>/square distance height id h|s [true]</b></p>
+        <p>Build a hollow square wall (h) or solid square prism (s), centered on your block coordinates and extending upward from your feet. The limit is 500 blocks unless you add true.</p>
+        <p>EXAMPLE: /square 5 4 green_lightest h</p>
+        <p>Creates an 11×11 hollow square wall, 4 blocks tall, using green_lightest.</p>
+        <p><b>/sphere radius id h|s [true]</b></p>
+        <p>Build a hollow sphere (h) or solid sphere (s), centered at your feet. The minimum radius is 2. The sphere cannot extend below ground. The limit is 500 blocks unless you add true.</p>
+        <p>EXAMPLE: /sphere 5 green_lightest h</p>
+        <p>Creates a hollow sphere with a radius of 5 blocks using green_lightest.</p>
+        <p><b>/teleport x y z</b></p>
+        <p>Move to whole block coordinates with your feet at Y. Coordinates must be within ±1,000,000, at or above ground, and unoccupied.</p>
+        <p><b>/spawn</b></p>
+        <p>Return to the original starting position if it is unoccupied.</p>
+        <p><b>/new</b></p>
+        <p>Reset your world after confirmation. This replaces your autosaved world.</p>
         <p><b>/save [name]</b></p>
         <p>Download your world as a .bound file. Optionally enter a name, or leave it blank to save as world.bound.</p>
         <p>EXAMPLE: /save myworld</p>
