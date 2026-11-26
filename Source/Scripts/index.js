@@ -35,8 +35,8 @@ const error = document.querySelector('#error');
 const mode = document.querySelector('#mode');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#030406');
-scene.fog = new THREE.Fog('#030406', 48, 300);
-const camera = new THREE.PerspectiveCamera(75, 1, .1, 700);
+scene.fog = new THREE.Fog('#030406', 200, 2000);
+const camera = new THREE.PerspectiveCamera(75, 1, .1, 2000);
 camera.rotation.order = 'YXZ';
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -153,6 +153,8 @@ let pitch = -.47;
 let flying = false;
 let grounded = true;
 let tap = 0;
+let dash = 0;
+let sprint = false;
 let step = 0;
 const buttons = new Set();
 const clicks = [0, 0, 0];
@@ -227,10 +229,11 @@ function build() {
 
     for (let i = 0; i < 1000 && job.x <= job.high[0]; i++) {
         if (!job.test || job.test(job.x, job.y, job.z)) {
+            const type = job.paint ? job.paint(job.x, job.y, job.z) : job.type;
             const item = world.get(key(job.x, job.y, job.z));
-            if (!item || item.type !== job.type) {
+            if (type !== undefined && (!item || item.type !== type)) {
                 if (item) { touched.add(parts[item.type]); remove(job.x, job.y, job.z, true); }
-                if (job.type >= 0) { add(job.x, job.y, job.z, job.type, true); touched.add(parts[job.type]); }
+                if (type >= 0) { add(job.x, job.y, job.z, type, true); touched.add(parts[type]); }
             }
         }
         if (++job.z > job.high[2]) {
@@ -302,7 +305,7 @@ function sculpt(args, kind) {
 
 function teleport(args) {
     if (loading || jobs.length) return 'ERROR: World is busy';
-    if (args.length !== 3 || args.some(value => !/^-?\d+$/.test(value) || Math.abs(Number(value)) > 1000000)) return 'ERROR: Invalid coordinates';
+    if (args.length !== 3 || args.some(value => !/^-?\d+$/.test(value) || Math.abs(Number(value)) > 10000)) return 'ERROR: Invalid coordinates';
     const [x, y, z] = args.map(Number);
     if (y < 0) return 'ERROR: Cannot teleport below ground';
     const a = (x + .5) * SIZE, b = y * SIZE, c = (z + .5) * SIZE;
@@ -466,7 +469,7 @@ document.body.append(picker);
 
 function load(args) {
     if (args.length) return 'ERROR: Invalid arguments';
-    if (loading) return 'ERROR: World is busy';
+    if (loading || jobs.some(job => job.paint)) return 'ERROR: World is busy';
     close();
     picker.value = '';
     picker.click();
@@ -479,18 +482,121 @@ picker.addEventListener('change', async () => {
         if (!/\.bound$/i.test(file.name)) throw Error();
         const blocks = verify(JSON.parse(await file.text()));
         if (loading) throw Error();
+        if (jobs.some(job => job.paint)) throw Error('ERROR: World is busy');
         await replace(blocks);
     } catch (failure) {
         command.hidden = false;
-        error.textContent = failure.message === 'ERROR: World contains an outdated block' ? failure.message : 'ERROR: Invalid world file';
+        error.textContent = ['ERROR: World contains an outdated block', 'ERROR: World is busy'].includes(failure.message) ? failure.message : 'ERROR: Invalid world file';
         error.hidden = false;
         input.focus();
     }
 });
 
+const images = document.createElement('input');
+images.type = 'file';
+images.accept = 'image/*';
+images.hidden = true;
+document.body.append(images);
+let artwork;
+
+function pixelart(args) {
+    if (loading) return 'ERROR: World is busy';
+    if (args.length < 3 || args.length > 4 || (args.length === 4 && args[3] !== 'true')) return 'ERROR: Invalid arguments';
+    const [width, colors, mode, confirm] = args;
+    if (width !== 'auto' && (!/^\d+$/.test(width) || !Number.isSafeInteger(Number(width)) || Number(width) < 3)) return 'ERROR: Invalid width';
+    if (Number(width) > 250000) return 'ERROR: Image is too large';
+    if (colors !== 'colors' && colors !== 'blackwhite') return 'ERROR: Expected colors or blackwhite';
+    if (mode !== 'flat' && mode !== 'wall') return 'ERROR: Expected flat or wall';
+    if (width === 'auto' && confirm !== 'true') return 'ERROR: Auto requires true';
+    artwork = args;
+    close();
+    images.value = '';
+    images.click();
+}
+
+images.addEventListener('change', async () => {
+    const file = images.files[0];
+    if (!file) return;
+    const [size, colors, mode, confirm] = artwork;
+    const previous = world;
+    let image;
+    try {
+        image = await createImageBitmap(file);
+        if (!image.width || !image.height) throw Error();
+        const width = size === 'auto' ? image.width : Number(size);
+        const height = size === 'auto' ? image.height : Math.max(1, Math.round(width * image.height / image.width));
+        if (width * height > 250000) throw Error('ERROR: Image is too large');
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        const data = new Uint8ClampedArray(width * height * 4);
+        for (let v = 0; v < height; v += 16384)for (let u = 0; u < width; u += 16384) {
+            canvas.width = Math.min(16384, width - u);
+            canvas.height = Math.min(16384, height - v);
+            context.imageSmoothingQuality = 'high';
+            context.drawImage(image, -u, -v, width, height);
+            const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+            for (let row = 0; row < canvas.height; row++) data.set(pixels.subarray(row * canvas.width * 4, (row + 1) * canvas.width * 4), ((v + row) * width + u) * 4);
+        }
+        if (confirm !== 'true') {
+            let total = 0;
+            for (let i = 3; i < data.length; i += 4) {
+                if (data[i] && ++total > 500) throw Error('ERROR: Maximum 500 blocks exceeded');
+            }
+        }
+
+        const shades = [];
+        ASSETS.forEach((name, type) => {
+            if (!/_(lightest|light|normal|dark|darkest)$/.test(name)) return;
+            if (colors === 'blackwhite' && !/^(black|gray|white)_/.test(name)) return;
+            const texture = parts[type].material.map.image;
+            if (!texture) throw Error('ERROR: Block textures are not ready');
+            canvas.width = texture.width;
+            canvas.height = texture.height;
+            context.drawImage(texture, 0, 0);
+            const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+            let r = 0, g = 0, b = 0;
+            for (let i = 0; i < pixels.length; i += 4) { r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; }
+            const count = pixels.length / 4;
+            shades.push({ type, r: r / count, g: g / count, b: b / count });
+        });
+
+        if (loading || world !== previous) throw Error('ERROR: World is busy');
+        const flat = mode === 'flat';
+        const angle = Math.round(yaw / (Math.PI / 2)) * Math.PI / 2;
+        const a = Math.round(-Math.sin(angle)), b = Math.round(-Math.cos(angle));
+        const x = Math.floor((body.x + a * RADIUS) / SIZE) + a;
+        const y = Math.floor(body.y / SIZE);
+        const z = Math.floor((body.z + b * RADIUS) / SIZE) + b;
+        const end = [x - b * (width - 1) + (flat ? a * (height - 1) : 0), y + (flat ? 0 : height - 1), z + a * (width - 1) + (flat ? b * (height - 1) : 0)];
+        const start = [x, y, z];
+        const low = start.map((value, index) => Math.min(value, end[index]));
+        const high = start.map((value, index) => Math.max(value, end[index]));
+        if (y < 0 || [...low, ...high].some(value => !Number.isSafeInteger(value))) throw Error('ERROR: Invalid coordinates');
+        const paint = (u, v, w) => {
+            const column = (w - z) * a - (u - x) * b;
+            const row = height - 1 - (flat ? (u - x) * a + (w - z) * b : v - y);
+            const i = (row * width + column) * 4;
+            if (!data[i + 3]) return;
+            let type, best = Infinity;
+            for (const shade of shades) {
+                const distance = (data[i] - shade.r) ** 2 + (data[i + 1] - shade.g) ** 2 + (data[i + 2] - shade.b) ** 2;
+                if (distance < best) { best = distance; type = shade.type; }
+            }
+            return type;
+        };
+        jobs.push({ low, high, paint, x: low[0], y: low[1], z: low[2] });
+        if (jobs.length === 1) build();
+    } catch (failure) {
+        command.hidden = false;
+        error.textContent = failure.message.startsWith('ERROR:') ? failure.message : 'ERROR: Invalid image file';
+        error.hidden = false;
+        input.focus();
+    } finally { if (image) image.close(); }
+});
+
 async function reset(args) {
     if (args.length !== 1 || args[0] !== 'itsmike613') return 'ERROR: Are you sure? Type /new itsmike613 to reset this world';
-    if (loading || (!ready && typeof indexedDB !== 'undefined')) return 'ERROR: World is busy';
+    if (loading || jobs.some(job => job.paint) || (!ready && typeof indexedDB !== 'undefined')) return 'ERROR: World is busy';
     if (!database && typeof indexedDB !== 'undefined') return 'ERROR: Unable to reset world';
     loading = true;
     clearTimeout(timer);
@@ -515,7 +621,7 @@ async function reset(args) {
     }
 }
 
-const commands = new Map([['fill', fill], ['save', save], ['load', load], ['circle', args => sculpt(args, 'circle')], ['square', args => sculpt(args, 'square')], ['sphere', args => sculpt(args, 'sphere')], ['teleport', teleport], ['spawn', spawn], ['new', reset], ['screenshot', screenshot]]);
+const commands = new Map([['fill', fill], ['save', save], ['load', load], ['circle', args => sculpt(args, 'circle')], ['square', args => sculpt(args, 'square')], ['sphere', args => sculpt(args, 'sphere')], ['teleport', teleport], ['spawn', spawn], ['new', reset], ['screenshot', screenshot], ['pixelart', pixelart]]);
 
 function close() {
     command.hidden = true;
@@ -570,6 +676,8 @@ document.addEventListener('keydown', event => {
         event.preventDefault();
         keys.clear();
         buttons.clear();
+        sprint = false;
+        dash = 0;
         command.hidden = false;
         if (document.pointerLockElement === canvas) document.exitPointerLock();
         input.focus();
@@ -582,8 +690,15 @@ document.addEventListener('keydown', event => {
     if (event.repeat || held) return;
     if (event.code === 'KeyQ') select(chosen - 1);
     if (event.code === 'KeyE') select(chosen + 1);
+    const now = performance.now();
+
+    if (event.code === 'KeyW') {
+        if (dash && now - dash < 300) {
+            sprint = true; dash = 0;
+        } else dash = now;
+    }
+
     if (event.code === 'Space') {
-        const now = performance.now();
         if (tap && now - tap < 300) {
             flying = !flying; speed.y = 0; tap = 0;
             mode.textContent = flying ? 'FLY' : 'WALK';
@@ -596,8 +711,12 @@ document.addEventListener('keydown', event => {
     }
 });
 
-document.addEventListener('keyup', event => keys.delete(event.code));
-window.addEventListener('blur', () => { keys.clear(); buttons.clear(); });
+document.addEventListener('keyup', event => {
+    keys.delete(event.code);
+    if (event.code === 'KeyW') sprint = false;
+});
+
+window.addEventListener('blur', () => { keys.clear(); buttons.clear(); sprint = false; dash = 0; });
 window.addEventListener('wheel', event => {
     if (palette.contains(event.target) || !command.hidden) return;
     event.preventDefault();
@@ -633,9 +752,10 @@ function frame(now) {
     const right = Number(keys.has('KeyD')) - Number(keys.has('KeyA'));
     const length = Math.hypot(forward, right) || 1;
     const pace = flying ? 11.6 : 9;
+    const stride = sprint && forward > 0 ? pace * 2 : pace;
     const blend = 1 - Math.exp(-13 * dt);
-    speed.x += ((right * Math.cos(yaw) - forward * Math.sin(yaw)) * pace / length - speed.x) * blend;
-    speed.z += ((-right * Math.sin(yaw) - forward * Math.cos(yaw)) * pace / length - speed.z) * blend;
+    speed.x += ((right * Math.cos(yaw) - forward * Math.sin(yaw)) * stride / length - speed.x) * blend;
+    speed.z += ((-right * Math.sin(yaw) - forward * Math.cos(yaw)) * stride / length - speed.z) * blend;
     if (flying) {
         const lift = Number(keys.has('Space')) - Number(keys.has('ShiftLeft') || keys.has('ShiftRight'));
         speed.y += (lift * pace - speed.y) * blend;
@@ -672,6 +792,7 @@ function frame(now) {
     }
 
     renderer.render(scene, camera);
+    floor.position.set(body.x, 0, body.z);
 }
 
 requestAnimationFrame(frame);

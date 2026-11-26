@@ -54,8 +54,12 @@
         <p>Build a hollow sphere (h) or solid sphere (s), centered at your feet. The minimum radius is 2. The sphere cannot extend below ground. The limit is 500 blocks unless you add true.</p>
         <p>EXAMPLE: /sphere 5 green_lightest h</p>
         <p>Creates a hollow sphere with a radius of 5 blocks using green_lightest.</p>
+        <p><b>/pixelart width|auto colors|blackwhite flat|wall [true]</b></p>
+        <p>Choose an image to build in front of you using color blocks (colors) or white, gray, and black blocks (blackwhite). Enter a width of at least 3 to scale the image proportionally, or auto to use its original dimensions. Build at your feet (flat) or upward (wall). Transparent pixels are skipped. Add true for auto or more than 500 blocks.</p>
+        <p>EXAMPLE: /pixelart 32 colors wall true</p>
+        <p>Builds a 32-block-wide colored wall from the selected image, preserving its proportions.</p>
         <p><b>/teleport x y z</b></p>
-        <p>Move to whole block coordinates with your feet at Y. Coordinates must be within ±1,000,000, at or above ground, and unoccupied.</p>
+        <p>Move to whole block coordinates with your feet at Y. Coordinates must be within ±10,000, at or above ground, and unoccupied.</p>
         <p><b>/spawn</b></p>
         <p>Return to the original starting position if it is unoccupied.</p>
         <p><b>/new</b></p>
