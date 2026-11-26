@@ -6,18 +6,20 @@ const EYE = 1.76;
 const HEIGHT = 2;
 const RADIUS = .44;
 const ASSETS = [
-    'white_lightest', 'white_light', 'white_normal', 'white_dark', 'white_darkest',
-    'gray_lightest', 'gray_light', 'gray_normal', 'gray_dark', 'gray_darkest',
     'black_lightest', 'black_light', 'black_normal', 'black_dark', 'black_darkest',
+    'gray_lightest', 'gray_light', 'gray_normal', 'gray_dark', 'gray_darkest',
+    'white_lightest', 'white_light', 'white_normal', 'white_dark', 'white_darkest',
+    'tan_lightest', 'tan_light', 'tan_normal', 'tan_dark', 'tan_darkest',
     'brown_lightest', 'brown_light', 'brown_normal', 'brown_dark', 'brown_darkest',
-    'red_lightest', 'red_light', 'red_normal', 'red_dark', 'red_darkest',
     'orange_lightest', 'orange_light', 'orange_normal', 'orange_dark', 'orange_darkest',
     'yellow_lightest', 'yellow_light', 'yellow_normal', 'yellow_dark', 'yellow_darkest',
     'green_lightest', 'green_light', 'green_normal', 'green_dark', 'green_darkest',
+    'cyan_lightest', 'cyan_light', 'cyan_normal', 'cyan_dark', 'cyan_darkest',
     'blue_lightest', 'blue_light', 'blue_normal', 'blue_dark', 'blue_darkest',
     'purple_lightest', 'purple_light', 'purple_normal', 'purple_dark', 'purple_darkest',
     'pink_lightest', 'pink_light', 'pink_normal', 'pink_dark', 'pink_darkest',
-    'glass'
+    'red_lightest', 'red_light', 'red_normal', 'red_dark', 'red_darkest',
+    'glass', 'wood_planks', 'masonry_bricks', 'stone_bricks', 'cement'
 ];
 const CLEAR = ['glass'];
 const types = new Map(ASSETS.map((id, index) => [id, index]));
@@ -114,6 +116,7 @@ function select(index) {
     chosen = (index + ASSETS.length) % ASSETS.length;
     tiles.forEach((tile, index) => tile.classList.toggle('selected', index === chosen));
     number.textContent = ASSETS[chosen];
+    tiles[chosen].scrollIntoView({ block: 'nearest' });
 }
 
 ASSETS.forEach((name, index) => {
