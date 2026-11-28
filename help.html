@@ -27,53 +27,58 @@
         </header>
         <div class="heading"><span>CONTROLS</span></div>
         <div class="info"><span>W A S D</span><span>MOVE</span></div>
+        <div class="info"><span>W</span><span>DOUBLE TAP TO SPRINT</span></div>
         <div class="info"><span>MOUSE</span><span>LOOK · CLICK TO LOCK</span></div>
         <div class="info"><span>LEFT CLICK</span><span>BREAK BLOCK</span></div>
         <div class="info"><span>RIGHT CLICK</span><span>PLACE BLOCK</span></div>
         <div class="info"><span>MIDDLE CLICK</span><span>PICK BLOCK</span></div>
         <div class="info"><span>WHEEL · Q / E</span><span>CHOOSE BLOCK</span></div>
-        <div class="info"><span>SPACE</span><span>JUMP · DOUBLE TAP TO FLY</span></div>
-        <div class="info"><span>SHIFT</span><span>DESCEND WHILE FLYING</span></div>
-        <div class="info"><span>ESC</span><span>UNLOCK / CLOSE COMMAND</span></div>
+        <div class="info"><span>SPACE</span><span>JUMP · DOUBLE TAP TO TOGGLE FLIGHT</span></div>
+        <div class="info"><span>SPACE / SHIFT</span><span>ASCEND / DESCEND WHILE FLYING</span></div>
+        <div class="info"><span>ESC</span><span>UNLOCK / CLOSE COMMANDS</span></div>
         <div class="info"><span>/</span><span>OPEN COMMANDS</span></div>
         <div class="info"><span>ENTER</span><span>EXECUTE COMMAND</span></div>
         <div class="heading"><span>COMMANDS</span></div>
+        <p>The syntax bar guides you as you type. The status bar displays warnings, errors, progress and results.</p>
+        <p>Add true when building or removing more than 1,000 blocks. Commands involving more than 250,000 blocks display a performance warning. Press ENTER again to proceed, or edit or close the command to cancel confirmation.</p>
+        <p>Press ESC to close commands, then ESC again to cancel a running command if possible. Blocks already placed or removed will remain changed.</p>
         <p><b>/fill x y z x y z id [true]</b></p>
-        <p>Fill the area between two block coordinates, including both corners. Use descriptive block IDs to choose a block, or 0 to remove blocks. The limit is 500 blocks unless you add true.</p>
+        <p>Fill the area between two block coordinates, including both corners. Enter a block ID to place blocks, or 0 to remove them.</p>
         <p>EXAMPLE: /fill 0 0 0 4 0 4 green_lightest</p>
-        <p>Creates a 5×5 platform of green_lightest blocks at coordinates 0, 0, 0.</p>
+        <p>Builds a 5×5 platform using green_lightest blocks.</p>
         <p><b>/circle radius height id h|s [true]</b></p>
-        <p>Build a hollow circular wall (h) or solid cylinder (s), centered on your block coordinates and extending upward from your feet. The minimum radius is 2. The limit is 500 blocks unless you add true.</p>
+        <p>Build a hollow circular wall (h) or solid cylinder (s) from your feet upward. The minimum radius is 2 blocks.</p>
         <p>EXAMPLE: /circle 5 4 green_lightest h</p>
-        <p>Creates a hollow circular wall with a radius of 5 and a height of 4 blocks using green_lightest.</p>
+        <p>Builds a hollow circular wall with a radius of 5 blocks and a height of 4 blocks using green_lightest blocks.</p>
         <p><b>/square distance height id h|s [true]</b></p>
-        <p>Build a hollow square wall (h) or solid square prism (s), centered on your block coordinates and extending upward from your feet. The limit is 500 blocks unless you add true.</p>
+        <p>Build a hollow square wall (h) or solid square prism (s) from your feet upward. Distance determines how many blocks the square extends in each horizontal direction from its center.</p>
         <p>EXAMPLE: /square 5 4 green_lightest h</p>
-        <p>Creates an 11×11 hollow square wall, 4 blocks tall, using green_lightest.</p>
+        <p>Builds an 11×11 hollow square wall, 4 blocks tall, using green_lightest blocks.</p>
         <p><b>/sphere radius id h|s [true]</b></p>
-        <p>Build a hollow sphere (h) or solid sphere (s), centered at your feet. The minimum radius is 2. The sphere cannot extend below ground. The limit is 500 blocks unless you add true.</p>
+        <p>Build a hollow sphere (h) or solid sphere (s) centered at your feet. The minimum radius is 2 blocks. Move high enough to prevent the sphere from extending below ground.</p>
         <p>EXAMPLE: /sphere 5 green_lightest h</p>
-        <p>Creates a hollow sphere with a radius of 5 blocks using green_lightest.</p>
+        <p>Builds a hollow sphere with a radius of 5 blocks using green_lightest blocks.</p>
         <p><b>/pixelart width|auto colors|blackwhite flat|wall [true]</b></p>
-        <p>Choose an image to build in front of you using color blocks (colors) or white, gray, and black blocks (blackwhite). Enter a width of at least 3 to scale the image proportionally, or auto to use its original dimensions. Build at your feet (flat) or upward (wall). Transparent pixels are skipped. Add true for auto or more than 500 blocks.</p>
-        <p>EXAMPLE: /pixelart 32 colors wall true</p>
-        <p>Builds a 32-block-wide colored wall from the selected image, preserving its proportions.</p>
+        <p>Build an image using colored blocks (colors) or shades of black, gray and white (blackwhite). Enter a width of at least 3 blocks to resize the image proportionally, or auto to keep its original size. Using auto requires true.</p>
+        <p>Build horizontally at your feet (flat) or vertically in front of you (wall). Transparent areas are skipped.</p>
+        <p>EXAMPLE: /pixelart 16 colors wall</p>
+        <p>Builds a 16-block-wide colored image as a vertical wall.</p>
         <p><b>/teleport x y z</b></p>
-        <p>Move to whole block coordinates with your feet at Y. Coordinates must be within ±10,000, at or above ground, and unoccupied.</p>
+        <p>Move to the specified block coordinates. Coordinates must be whole numbers between −10,000 and 10,000. Your destination must be unoccupied and at or above ground.</p>
         <p><b>/spawn</b></p>
-        <p>Return to the original starting position if it is unoccupied.</p>
+        <p>Return to your starting position if it is unoccupied.</p>
         <p><b>/new</b></p>
-        <p>Reset your world after confirmation. This replaces your autosaved world.</p>
+        <p>Reset your world by following the confirmation instructions. This replaces your current world and its autosave.</p>
         <p><b>/save [name]</b></p>
-        <p>Download your world as a .bound file. Optionally enter a name, or leave it blank to save as world.bound.</p>
+        <p>Download your world as a .bound file. Enter a filename without its extension, or leave it blank to save as world.bound.</p>
         <p>EXAMPLE: /save myworld</p>
         <p>Downloads your world as myworld.bound.</p>
         <p><b>/load</b></p>
-        <p>Open a .bound file to load a saved world. This replaces your current world.</p>
+        <p>Open a .bound file to replace your current world with a previously saved world.</p>
         <p><b>/screenshot [name]</b></p>
-        <p>Download a screenshot of your world without the interface. Optionally enter a name, or leave it blank to save as screenshot.png.</p>
+        <p>Download a screenshot of your current view without the interface. Enter a filename without its extension, or leave it blank to save as screenshot.png.</p>
         <p>EXAMPLE: /screenshot mybuild</p>
-        <p>Downloads the current view as mybuild.png.</p>
+        <p>Downloads your screenshot as mybuild.png.</p>
         <a id="help" href="index.html">BACK TO GAME</a>
     </main>
 </body>

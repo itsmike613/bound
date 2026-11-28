@@ -168,9 +168,10 @@ export function controls(engine) {
         document.addEventListener('keydown', event => {
             if (panel.active) {
                 if (event.code === 'Escape') { event.preventDefault(); panel.close(); }
-                if (event.code === 'Enter') { event.preventDefault(); panel.submit(); }
+                if (event.key === 'Enter' || event.code === 'Enter' || event.code === 'NumpadEnter') { event.preventDefault(); if (!event.repeat) panel.submit(); }
                 return;
             }
+            if (event.code === 'Escape' && !event.repeat && panel.cancel()) { event.preventDefault(); return; }
             if (event.key === '/' && !event.ctrlKey && !event.altKey && !event.metaKey) {
                 event.preventDefault();
                 keys.clear();

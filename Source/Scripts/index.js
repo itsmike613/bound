@@ -52,7 +52,8 @@ const floor = new THREE.Mesh(new THREE.PlaneGeometry(3200, 3200), new THREE.Mesh
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 const shape = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
-const dummy = new THREE.Object3D();
+const PAGE = 8192;
+const touched = new Set();
 let world = new Map();
 let parts = [];
 
@@ -60,56 +61,149 @@ function key(x, y, z) {
     return `${x},${y},${z}`;
 }
 
-function stamp(part, index) {
-    const cell = part.cells[index];
-    dummy.position.set((cell.x + .5) * SIZE, (cell.y + .5) * SIZE, (cell.z + .5) * SIZE);
-    dummy.updateMatrix();
-    part.mesh.setMatrixAt(index, dummy.matrix);
+function stamp(page, index) {
+    const cell = page.cells[index], matrix = page.mesh.instanceMatrix.array, offset = index * 16;
+    matrix[offset + 12] = (cell.x + .5) * SIZE;
+    matrix[offset + 13] = (cell.y + .5) * SIZE;
+    matrix[offset + 14] = (cell.z + .5) * SIZE;
+    page.first = Math.min(page.first, index);
+    page.last = Math.max(page.last, index);
+    const box = page.box;
+    const x = matrix[offset + 12], y = matrix[offset + 13], z = matrix[offset + 14], half = SIZE / 2;
+    box.min.x = Math.min(box.min.x, x - half);
+    box.min.y = Math.min(box.min.y, y - half);
+    box.min.z = Math.min(box.min.z, z - half);
+    box.max.x = Math.max(box.max.x, x + half);
+    box.max.y = Math.max(box.max.y, y + half);
+    box.max.z = Math.max(box.max.z, z + half);
 }
 
-function finish(part) {
-    part.mesh.count = part.cells.length;
-    part.mesh.instanceMatrix.needsUpdate = true;
-    part.mesh.computeBoundingSphere();
+function finish(page) {
+    if (!page.mesh) return;
+    const count = page.cells.length, limit = page.mesh.instanceMatrix.count;
+    if (limit > 8 && count * 4 <= limit) {
+        try { grow(page, true, Math.max(8, 2 ** Math.ceil(Math.log2(count * 2)))); }
+        catch { }
+        page.box.makeEmpty();
+        for (let i = 0; i < count; i++) stamp(page, i);
+    }
+    const mesh = page.mesh;
+    mesh.count = count;
+    if (page.last >= page.first) {
+        const matrix = mesh.instanceMatrix;
+        for (const range of matrix.updateRanges) {
+            page.first = Math.min(page.first, range.start / 16);
+            page.last = Math.max(page.last, (range.start + range.count) / 16 - 1);
+        }
+        matrix.clearUpdateRanges();
+        matrix.addUpdateRange(page.first * 16, (page.last - page.first + 1) * 16);
+        mesh.instanceMatrix.needsUpdate = true;
+        page.first = Infinity;
+        page.last = -1;
+    }
+    page.box.getBoundingSphere(mesh.boundingSphere);
 }
 
-function grow(part) {
-    const mesh = new THREE.InstancedMesh(shape, part.material, Math.max(8, part.limit * 2));
+function grow(page, live, limit) {
+    const previous = page.mesh;
+    const mesh = new THREE.InstancedMesh(shape, page.part.material, limit || Math.min(PAGE, Math.max(8, previous ? previous.instanceMatrix.count * 2 : 0)));
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    if (part.mesh) { scene.remove(part.mesh); part.mesh.dispose(); }
-    part.mesh = mesh;
-    part.limit = mesh.instanceMatrix.count;
-    scene.add(mesh);
-    part.cells.forEach((cell, index) => stamp(part, index));
-    finish(part);
+    mesh.boundingSphere = new THREE.Sphere();
+    mesh.count = page.cells.length;
+    if (previous) {
+        mesh.instanceMatrix.array.set(previous.instanceMatrix.array.subarray(0, page.cells.length * 16));
+        scene.remove(previous);
+        previous.dispose();
+    }
+    page.mesh = mesh;
+    page.first = Infinity;
+    page.last = -1;
+    if (live) scene.add(mesh);
 }
 
-function add(x, y, z, type, batch = false) {
+function insert(map, part, x, y, z, type, id, live) {
+    let page = part.open.values().next().value;
+    if (!page) {
+        page = { part, cells: [], mesh: null, box: new THREE.Box3(), first: Infinity, last: -1 };
+        grow(page, live);
+        part.pages.add(page);
+        part.open.add(page);
+    }
+    const index = page.cells.length;
+    if (index === page.mesh.instanceMatrix.count) grow(page, live);
+    const cell = { x, y, z, type, index, page, id };
+    page.cells.push(cell);
+    try { map.set(id, cell); }
+    catch (failure) {
+        page.cells.pop();
+        if (!page.cells.length) release(page);
+        throw failure;
+    }
+    stamp(page, index);
+    if (page.cells.length === PAGE) part.open.delete(page);
+    touched.add(page);
+}
+
+function flush() {
+    touched.forEach(finish);
+    touched.clear();
+}
+
+function add(x, y, z, type) {
     const id = key(x, y, z);
     if (world.has(id)) return;
-    const part = parts[type];
-    world.set(id, { type, index: part.cells.length });
-    part.cells.push({ x, y, z });
-    if (part.cells.length > part.limit) grow(part);
-    else { stamp(part, part.cells.length - 1); if (!batch) finish(part); }
-    if (!batch) queue();
+    insert(world, parts[type], x, y, z, type, id, true);
+    flush();
+    queue();
 }
 
-function remove(x, y, z, batch = false) {
-    const id = key(x, y, z);
-    const item = world.get(id);
-    if (!item) return;
-    const part = parts[item.type];
-    const last = part.cells.pop();
-    world.delete(id);
+function release(page) {
+    touched.delete(page);
+    page.part.open.delete(page);
+    page.part.pages.delete(page);
+    scene.remove(page.mesh);
+    page.mesh.dispose();
+    page.mesh = null;
+}
 
-    if (item.index < part.cells.length) {
-        part.cells[item.index] = last;
-        world.get(key(last.x, last.y, last.z)).index = item.index;
-        stamp(part, item.index);
+function erase(item, keep = false) {
+    const page = item.page, part = page.part;
+    const last = page.cells.pop();
+    if (!keep) world.delete(item.id);
+    if (!page.cells.length) {
+        release(page);
+        return;
     }
+    part.open.add(page);
+    if (item !== last) {
+        page.cells[item.index] = last;
+        last.index = item.index;
+        stamp(page, item.index);
+    }
+    touched.add(page);
+}
 
-    if (!batch) { finish(part); queue(); }
+function remove(x, y, z) {
+    const item = world.get(key(x, y, z));
+    if (!item) return;
+    erase(item);
+    flush();
+    queue();
+}
+
+function change(x, y, z, type) {
+    if (type === undefined) return false;
+    const id = key(x, y, z), item = world.get(id);
+    if (item ? item.type === type : type < 0) return false;
+    if (type >= 0) {
+        insert(world, parts[type], x, y, z, type, id, true);
+        if (item) erase(item, true);
+    } else erase(item);
+    return true;
+}
+
+function part(material) {
+    return { material, pages: new Set(), open: new Set() };
 }
 
 function asset(name) {
@@ -122,7 +216,7 @@ ASSETS.forEach(name => {
     tex.magFilter = THREE.NearestFilter;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    parts.push({ cells: [], limit: 0, mesh: null, material: new THREE.MeshLambertMaterial({ map: tex, alphaTest: CLEAR.includes(name) ? .5 : 0 }) });
+    parts.push(part(new THREE.MeshLambertMaterial({ map: tex, alphaTest: CLEAR.includes(name) ? .5 : 0 })));
 });
 
 const dir = new THREE.Vector3();
@@ -158,42 +252,41 @@ function aim() {
     return null;
 }
 
-const jobs = [];
-let pending = 0;
+let building = false;
 
-function build() {
-    pending = 0;
-    const job = jobs[0];
-    if (!job) return;
-    const touched = new Set();
-
-    for (let i = 0; i < 1000 && job.x <= job.high[0]; i++) {
-        if (!job.test || job.test(job.x, job.y, job.z)) {
-            const type = job.paint ? job.paint(job.x, job.y, job.z) : job.type;
-            const item = world.get(key(job.x, job.y, job.z));
-            if (type !== undefined && (!item || item.type !== type)) {
-                if (item) { touched.add(parts[item.type]); remove(job.x, job.y, job.z, true); }
-                if (type >= 0) { add(job.x, job.y, job.z, type, true); touched.add(parts[type]); }
-            }
-        }
-        if (++job.z > job.high[2]) {
-            job.z = job.low[2];
-            if (++job.y > job.high[1]) {
-                job.y = job.low[1];
-                job.x++;
-            }
-        }
-    }
-
-    touched.forEach(finish);
-    if (job.x > job.high[0]) jobs.shift();
-    if (jobs.length) pending = requestAnimationFrame(build);
-    else queue();
+function wait() {
+    return new Promise(resolve => requestAnimationFrame(resolve));
 }
 
-function enqueue(low, high, options) {
-    jobs.push({ low, high, ...options, x: low[0], y: low[1], z: low[2] });
-    if (jobs.length === 1) build();
+async function build(spans, type, task) {
+    building = true;
+    let count = 0, time = performance.now();
+    try {
+        task.report();
+        for (const [x, y, z, length, axis = 2, step = 1] of spans) {
+            for (let i = 0; i < length; i++) {
+                const a = x + (axis === 0 ? i * step : 0), b = z + (axis === 2 ? i * step : 0);
+                if (task.cancelled) return;
+                if (change(a, y, b, typeof type === 'function' ? type(a, y, b) : type)) task.changed++;
+                task.done++;
+                if (++count === 256) {
+                    count = 0;
+                    if (performance.now() - time >= 6) {
+                        flush();
+                        task.report();
+                        await wait();
+                        time = performance.now();
+                    }
+                }
+            }
+        }
+    } finally {
+        try { flush(); }
+        finally {
+            building = false;
+            if (task.changed || dirty) queue();
+        }
+    }
 }
 
 let database = null;
@@ -202,28 +295,26 @@ let dirty = false;
 let revision = 0;
 let timer = 0;
 let loading = false;
+let saving = false;
 
 function snapshot() {
     const blocks = [];
-    parts.forEach((part, type) => part.cells.forEach(cell => blocks.push([cell.x, cell.y, cell.z, ASSETS[type]])));
+    parts.forEach((part, type) => part.pages.forEach(page => page.cells.forEach(cell => blocks.push([cell.x, cell.y, cell.z, ASSETS[type]]))));
     return { version: 1, blocks };
 }
 
 function verify(data) {
-    if (!data || data.version !== 1 || !Array.isArray(data.blocks)) throw Error();
-    const seen = new Set();
-    for (const block of data.blocks) {
-        if (!Array.isArray(block) || block.length !== 4 || !block.slice(0, 3).every(Number.isSafeInteger) || block[1] < 0 || typeof block[3] !== 'string') throw Error();
-        if (!types.has(block[3])) throw Error('ERROR: World contains an outdated block');
-        const id = key(block[0], block[1], block[2]);
-        if (seen.has(id)) throw Error();
-        seen.add(id);
-    }
+    if (!data || data.version !== 1 || !Array.isArray(data.blocks)) throw Error('ERROR: Invalid world file');
     return data.blocks;
 }
 
+function validate(block) {
+    if (!Array.isArray(block) || block.length !== 4 || !Number.isSafeInteger(block[0]) || !Number.isSafeInteger(block[1]) || !Number.isSafeInteger(block[2]) || block[1] < 0 || typeof block[3] !== 'string') throw Error('ERROR: Invalid world file');
+    if (!types.has(block[3])) throw Error('ERROR: World contains an outdated block');
+}
+
 function persist(data) {
-    if (!ready || !database || (!data && (!dirty || loading || jobs.length))) return;
+    if (!ready || !database || (!data && (!dirty || loading || building))) return;
     try {
         const mark = revision;
         const store = database.transaction('world', 'readwrite');
@@ -233,50 +324,79 @@ function persist(data) {
     } catch { }
 }
 
+async function autosave() {
+    if (!ready || !database || !dirty || loading || building || saving) return;
+    saving = true;
+    const mark = revision, blocks = [];
+    let time = performance.now();
+    try {
+        for (const cell of world.values()) {
+            blocks.push([cell.x, cell.y, cell.z, ASSETS[cell.type]]);
+            if (blocks.length % 256 === 0 && performance.now() - time >= 6) {
+                await wait();
+                if (mark !== revision || loading || building || !dirty) return;
+                time = performance.now();
+            }
+        }
+        if (mark === revision && !loading && !building && dirty) persist({ version: 1, blocks });
+    } catch { }
+    finally {
+        saving = false;
+        if (mark !== revision && dirty && !loading && !building) {
+            clearTimeout(timer);
+            timer = setTimeout(autosave, 650);
+        }
+    }
+}
+
 function queue() {
     dirty = true;
     revision++;
     clearTimeout(timer);
-    if (ready && database && !loading && !jobs.length) timer = setTimeout(persist, 650);
+    if (ready && database && !loading && !building) timer = setTimeout(autosave, 650);
 }
 
-async function replace(blocks, save = true) {
+async function replace(blocks, save = true, task) {
     loading = true;
-    let next = [];
+    const next = parts.map(value => part(value.material));
+    const fresh = new Map();
+    let time = performance.now(), matched = 0, changed = 0;
     try {
-        const counts = Array(ASSETS.length).fill(0);
-        blocks.forEach(block => counts[types.get(block[3])]++);
-        next = parts.map(part => ({ cells: [], limit: 0, mesh: null, material: part.material }));
-        const fresh = new Map();
-        next.forEach((part, type) => {
-            if (!counts[type]) return;
-            part.limit = counts[type];
-            part.mesh = new THREE.InstancedMesh(shape, part.material, part.limit);
-            part.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        });
         for (let i = 0; i < blocks.length; i++) {
-            const [x, y, z, id] = blocks[i];
-            const type = types.get(id), part = next[type];
-            fresh.set(key(x, y, z), { type, index: part.cells.length });
-            part.cells.push({ x, y, z });
-            stamp(part, part.cells.length - 1);
-            if (i && i % 2000 === 0) await new Promise(resolve => requestAnimationFrame(resolve));
+            if (task?.cancelled) return;
+            const block = blocks[i];
+            validate(block);
+            const [x, y, z, id] = block, type = types.get(id);
+            const location = key(x, y, z);
+            if (fresh.has(location)) throw Error('ERROR: Invalid world file');
+            insert(fresh, next[type], x, y, z, type, location, false);
+            if (task) {
+                const item = world.get(location);
+                if (item) matched++;
+                if (item?.type !== type) changed++;
+                task.done++;
+            }
+            if (i % 256 === 0 && performance.now() - time >= 6) {
+                if (task) task.report();
+                await wait();
+                time = performance.now();
+            }
         }
-        next.forEach(part => { if (part.mesh) finish(part); });
-        jobs.length = 0;
-        cancelAnimationFrame(pending);
-        pending = 0;
+        if (task?.cancelled) return;
+        flush();
+        if (task) task.changed = changed + world.size - matched;
         clearTimeout(timer);
         const previous = parts;
         parts = next;
         world = fresh;
-        previous.forEach(part => { if (part.mesh) { scene.remove(part.mesh); part.mesh.dispose(); } });
-        parts.forEach(part => { if (part.mesh) scene.add(part.mesh); });
+        previous.forEach(part => part.pages.forEach(page => { scene.remove(page.mesh); page.mesh.dispose(); }));
+        parts.forEach(part => part.pages.forEach(page => scene.add(page.mesh)));
         if (save) dirty = true;
-    } catch (failure) {
-        next.forEach(part => { if (part.mesh) part.mesh.dispose(); });
-        throw failure;
     } finally {
+        if (parts !== next) {
+            touched.clear();
+            next.forEach(part => part.pages.forEach(page => page.mesh.dispose()));
+        }
         loading = false;
         if (dirty) queue();
     }
@@ -292,7 +412,7 @@ try {
             try {
                 const read = database.transaction('world').objectStore('world').get('current');
                 read.onsuccess = async () => {
-                    if (read.result && !dirty && !jobs.length && !loading) {
+                    if (read.result && !dirty && !building && !loading) {
                         try { await replace(verify(read.result), false); } catch { }
                     }
                     ready = true;
@@ -309,12 +429,10 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function clear() {
-    if (loading || jobs.some(job => job.paint) || (!ready && typeof indexedDB !== 'undefined')) return 'ERROR: World is busy';
+    if (loading || building || (!ready && typeof indexedDB !== 'undefined')) return 'ERROR: World is busy';
     if (!database && typeof indexedDB !== 'undefined') return 'ERROR: Unable to reset world';
     loading = true;
     clearTimeout(timer);
-    cancelAnimationFrame(pending);
-    pending = 0;
     try {
         if (database) {
             const store = persist({ version: 1, blocks: [] });
@@ -328,7 +446,6 @@ async function clear() {
         await replace([], false);
     } catch {
         loading = false;
-        if (jobs.length) pending = requestAnimationFrame(build);
         if (dirty) queue();
         return 'ERROR: Unable to reset world';
     }
@@ -345,12 +462,11 @@ window.addEventListener('resize', resize);
 resize();
 
 const engine = {
-    SIZE, RADIUS, ASSETS, types, canvas, camera, scene, renderer, marker, key, asset, add, remove, aim, enqueue, snapshot, verify, replace, clear,
+    SIZE, RADIUS, ASSETS, types, canvas, camera, scene, renderer, marker, key, asset, add, remove, aim, build, wait, snapshot, verify, replace, clear,
     get world() { return world; },
     get parts() { return parts; },
     get loading() { return loading; },
-    get busy() { return loading || jobs.length; },
-    get painting() { return jobs.some(job => job.paint); }
+    get busy() { return loading || building || (!ready && typeof indexedDB !== 'undefined'); }
 };
 const player = controls(engine);
 player.bind(commands(engine, player));

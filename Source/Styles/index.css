@@ -244,7 +244,7 @@ header p {
     left: 1px
 }
 
-#command, #error {
+#command, #status, #syntax {
     position: absolute;
     z-index: 3;
     left: 0;
@@ -280,13 +280,44 @@ header p {
     user-select: text
 }
 
-#error {
-    top: 0;
+#status, #syntax {
+    height: 35px;
+    line-height: 14px;
     border-bottom: 1px solid #343941;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: none
+}
+
+#status {
+    top: 0;
+    color: #e5e9ef
+}
+
+#status.failure {
     color: #f4b7b7
 }
 
-#command[hidden], #error[hidden] {
+#status.warning {
+    color: #e9c98d
+}
+
+#status.success {
+    color: #b8dfbd
+}
+
+#syntax {
+    top: 35px;
+    color: #8794a3
+}
+
+#syntax .current {
+    color: #e5e9ef;
+    background: #25313c
+}
+
+#command[hidden], #status[hidden], #syntax[hidden] {
     display: none
 }
 
