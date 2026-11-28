@@ -252,7 +252,13 @@ function aim() {
     return null;
 }
 
-let building = false;
+let building = false, reading = false;
+
+async function inspect(action) {
+    reading = true;
+    try { return await action(world); }
+    finally { reading = false; }
+}
 
 function wait() {
     return new Promise(resolve => requestAnimationFrame(resolve));
@@ -462,11 +468,11 @@ window.addEventListener('resize', resize);
 resize();
 
 const engine = {
-    SIZE, RADIUS, ASSETS, types, canvas, camera, scene, renderer, marker, key, asset, add, remove, aim, build, wait, snapshot, verify, replace, clear,
+    SIZE, RADIUS, ASSETS, types, canvas, camera, scene, renderer, marker, key, asset, add, remove, aim, build, wait, inspect, snapshot, verify, replace, clear,
     get world() { return world; },
     get parts() { return parts; },
-    get loading() { return loading; },
-    get busy() { return loading || building || (!ready && typeof indexedDB !== 'undefined'); }
+    get loading() { return loading || reading; },
+    get busy() { return loading || building || reading || (!ready && typeof indexedDB !== 'undefined'); }
 };
 const player = controls(engine);
 player.bind(commands(engine, player));

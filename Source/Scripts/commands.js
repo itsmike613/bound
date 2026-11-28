@@ -1,5 +1,5 @@
 export function commands(engine, player) {
-    const { SIZE, RADIUS, ASSETS, types, canvas, camera, scene, renderer, marker, build, wait, snapshot, verify, replace, clear } = engine;
+    const { SIZE, RADIUS, ASSETS, types, canvas, camera, scene, renderer, marker, build, wait, inspect, snapshot, verify, replace, clear } = engine;
     const { body, relocate } = player;
     const command = document.querySelector('#command');
     const input = document.querySelector('#input');
@@ -9,6 +9,14 @@ export function commands(engine, player) {
     const WARNING = 250000;
     const registry = new Map([
         ['fill', ['x y z x y z id [true]', fill]],
+        ['dither', ['x y z x y z id id percentage [true]', (args, task) => pattern(args, task, 'dither')]],
+        ['gradient', ['x y z x y z id id x|y|z [true]', (args, task) => pattern(args, task, 'gradient')]],
+        ['checker', ['x y z x y z id id size [true]', (args, task) => pattern(args, task, 'checker')]],
+        ['border', ['x y z x y z id thickness [true]', (args, task) => pattern(args, task, 'border')]],
+        ['stripe', ['x y z x y z id id size x|y|z [true]', (args, task) => pattern(args, task, 'stripe')]],
+        ['noise', ['x y z x y z id id percentage [true]', (args, task) => pattern(args, task, 'noise')]],
+        ['line', ['x y z x y z id width height [true]', line]],
+        ['map', ['x z x z [name]', map]],
         ['circle', ['radius height id h|s [true]', (args, task) => sculpt(args, task, 'circle')]],
         ['square', ['distance height id h|s [true]', (args, task) => sculpt(args, task, 'square')]],
         ['sphere', ['radius id h|s [true]', (args, task) => sculpt(args, task, 'sphere')]],
@@ -90,30 +98,177 @@ export function commands(engine, player) {
     }
 
     function bounds(low, high) {
-        if ([...low, ...high].some(value => !Number.isSafeInteger(value)) || !Number.isSafeInteger(high.reduce((total, value, index) => total * (value - low[index] + 1), 1))) throw Error('ERROR: Coordinates or size exceed numeric precision');
+        if ([...low, ...high].some(value => !Number.isSafeInteger(value)) || !Number.isSafeInteger(volume(low, high))) throw Error('ERROR: Coordinates or size exceed numeric precision');
     }
 
     function* box(low, high) {
         for (let x = low[0]; x <= high[0]; x++)for (let y = low[1]; y <= high[1]; y++) yield [x, y, low[2], high[2] - low[2] + 1];
     }
 
+    function coordinates(args, length) {
+        if (args.length < length) throw Error(`ERROR: Expected ${length} coordinates`);
+        if (args.slice(0, length).some(value => !/^-?\d+$/.test(value) || !Number.isSafeInteger(Number(value)))) throw Error('ERROR: Invalid coordinates');
+        const point = args.slice(0, length).map(Number), half = length / 2;
+        if (length === 6 && (point[1] < 0 || point[4] < 0)) throw Error('ERROR: Cannot build below ground');
+        const start = point.slice(0, half), end = point.slice(half);
+        const low = start.map((value, index) => Math.min(value, end[index]));
+        const high = start.map((value, index) => Math.max(value, end[index]));
+        return { start, end, low, high };
+    }
+
+    function colored(id) { return /_(lightest|light|normal|dark|darkest)$/.test(id); }
+
+    function block(id, solid = false) {
+        if (!solid && id === '0') return -1;
+        if (solid && !colored(id)) throw Error('ERROR: Expected a color block ID');
+        if (!types.has(id)) throw Error(solid ? 'ERROR: Invalid block ID' : 'ERROR: Invalid block ID (0 or descriptive ID)');
+        return types.get(id);
+    }
+
+    function positive(value) {
+        if (!/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < 1) throw Error('ERROR: Invalid dimensions');
+        return Number(value);
+    }
+
+    function axis(value) {
+        if (!/^[xyz]$/.test(value)) throw Error('ERROR: Expected x, y or z');
+        return 'xyz'.indexOf(value);
+    }
+
+    function arity(args, length) {
+        if (args.length < length || args.length > length + 1 || (args.length > length && args[length] !== 'true')) throw Error('ERROR: Invalid arguments');
+    }
+
+    function volume(low, high) {
+        return high.reduce((total, value, index) => total * (value - low[index] + 1), 1);
+    }
+
     async function fill(args, current) {
-        if (args.length < 6) return 'ERROR: Expected 6 coordinates';
-        if (args.slice(0, 6).some(value => !/^-?\d+$/.test(value) || !Number.isSafeInteger(Number(value)))) return 'ERROR: Invalid coordinates';
-        const point = args.slice(0, 6).map(Number);
-        if (point[1] < 0 || point[4] < 0) return 'ERROR: Cannot build below ground';
-        const id = args[6];
-        if (id !== '0' && !types.has(id)) return 'ERROR: Invalid block ID (0 or descriptive ID)';
-        if (args.length > 8 || (args.length === 8 && args[7] !== 'true')) return 'ERROR: Invalid arguments';
-        const low = [Math.min(point[0], point[3]), Math.min(point[1], point[4]), Math.min(point[2], point[5])];
-        const high = [Math.max(point[0], point[3]), Math.max(point[1], point[4]), Math.max(point[2], point[5])];
+        const { low, high } = coordinates(args, 6);
+        const type = block(args[6]);
+        arity(args, 7);
         bounds(low, high);
-        const total = high.reduce((total, value, index) => total * (value - low[index] + 1), 1);
-        confirm(total, args[7]);
-        if (!await warn(total, current)) return;
-        current.total = total;
-        current.blocks = true;
-        await build(box(low, high), id === '0' ? -1 : types.get(id), current);
+        await construct(() => box(low, high), type, args[7], current, volume(low, high));
+    }
+
+    function* difference(low, high, start, end) {
+        const a = low.slice(), b = high.slice();
+        for (let i = 0; i < 3; i++) {
+            if (start[i] > end[i]) { yield* box(low, high); return; }
+        }
+        for (let i = 0; i < 3; i++) {
+            if (a[i] < start[i]) {
+                b[i] = start[i] - 1;
+                yield* box(a, b);
+                a[i] = start[i];
+                b[i] = high[i];
+            }
+            if (b[i] > end[i]) {
+                a[i] = end[i] + 1;
+                yield* box(a, b);
+                a[i] = start[i];
+                b[i] = end[i];
+            }
+        }
+    }
+
+    function ordered(low, high, percentage, first, second) {
+        const axes = low.map((value, index) => value === high[index] ? -1 : index).filter(value => value >= 0);
+        if (!axes.length) return percentage >= 50 ? second : first;
+        const side = 2 ** Math.ceil(7 / axes.length), stride = [0, 0, 0];
+        axes.forEach((value, index) => stride[value] = side ** index);
+        const mask = new Uint8Array(side ** axes.length), threshold = Math.round(percentage * mask.length / 100);
+        for (let i = 0; i < mask.length; i++) {
+            const a = i % side, b = Math.floor(i / side) % side, c = Math.floor(i / (side * side));
+            let rank = 0;
+            for (let bit = 1; bit < side; bit *= 2) {
+                rank = rank * 2 + Number(!!((a ^ b ^ c) & bit));
+                if (axes.length > 1) rank = rank * 2 + Number(!!(b & bit));
+                if (axes.length > 2) rank = rank * 2 + Number(!!(c & bit));
+            }
+            mask[i] = Number(rank < threshold);
+        }
+        return (x, y, z) => mask[(x - low[0]) % side * stride[0] + (y - low[1]) % side * stride[1] + (z - low[2]) % side * stride[2]] ? second : first;
+    }
+
+    async function pattern(args, current, kind) {
+        const { start, end, low, high } = coordinates(args, 6);
+        const border = kind === 'border', gradient = kind === 'gradient', stripe = kind === 'stripe';
+        const length = border ? 8 : stripe ? 10 : 9;
+        arity(args, length);
+        const first = block(args[6], gradient), second = border ? first : block(args[7], gradient);
+        bounds(low, high);
+        let total = volume(low, high), shape = () => box(low, high), paint = first, prepare;
+        if (border) {
+            const size = positive(args[7]);
+            if (low.some((value, index) => value !== high[index]) && low.every((value, index) => value === high[index] || size <= (high[index] - value) / 2)) {
+                const a = low.map((value, index) => value === high[index] ? value : value + size);
+                const b = high.map((value, index) => value === low[index] ? value : value - size);
+                total -= volume(a, b);
+                shape = () => difference(low, high, a, b);
+            }
+        } else if (gradient) {
+            const direction = axis(args[8]);
+            if (first !== second && start[direction] !== end[direction]) prepare = () => {
+                const colors = shades('colors'), shade = match(colors), a = colors.find(color => color.type === first), b = colors.find(color => color.type === second);
+                let last, type;
+                return (x, y, z) => {
+                    const value = direction === 0 ? x : direction === 1 ? y : z;
+                    if (value === start[direction]) return first;
+                    if (value === end[direction]) return second;
+                    if (last === value) return type;
+                    last = value;
+                    const t = (value - start[direction]) / (end[direction] - start[direction]);
+                    return type = shade(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, value);
+                };
+            };
+        } else if (kind === 'dither' || kind === 'noise') {
+            const percentage = Number(args[8]);
+            if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(args[8]) || percentage < 0 || percentage > 100) return 'ERROR: Invalid percentage (0–100)';
+            if (percentage === 100) paint = second;
+            else if (percentage && first !== second) paint = kind === 'dither' ? ordered(low, high, percentage, first, second) : () => Math.random() * 100 < percentage ? second : first;
+        } else {
+            const size = positive(args[8]), direction = stripe ? axis(args[9]) : -1;
+            if (first !== second) paint = (x, y, z) => {
+                const a = direction < 0 || direction === 0 ? Math.floor((x - low[0]) / size) % 2 : 0;
+                const b = direction < 0 || direction === 1 ? Math.floor((y - low[1]) / size) % 2 : 0;
+                const c = direction < 0 || direction === 2 ? Math.floor((z - low[2]) / size) % 2 : 0;
+                return (a + b + c) % 2 ? second : first;
+            };
+        }
+        await construct(shape, paint, args[length], current, total, prepare);
+    }
+
+    function* path(start, end, width, height) {
+        const delta = end.map((value, index) => Math.abs(value - start[index])), step = end.map((value, index) => Math.sign(value - start[index]));
+        const length = Math.max(...delta), error = delta.map(() => Math.floor(length / 2));
+        const point = start.slice(), offset = Math.floor(width / 2), tail = width - offset - 1;
+        let previous, prior;
+        for (let i = 0; i <= length; i++) {
+            const low = [point[0] - offset, point[1], point[2] - offset], high = [point[0] + tail, point[1] + (height - 1), point[2] + tail];
+            if (!previous) yield* box(low, high);
+            else yield* difference(low, high, low.map((value, index) => Math.max(value, previous[index])), high.map((value, index) => Math.min(value, prior[index])));
+            if (i === length) break;
+            previous = low;
+            prior = high;
+            for (let j = 0; j < 3; j++) {
+                error[j] -= delta[j];
+                if (error[j] < 0) { point[j] += step[j]; error[j] += length; }
+            }
+        }
+    }
+
+    async function line(args, current) {
+        let { start, end, low, high } = coordinates(args, 6);
+        arity(args, 9);
+        const type = block(args[6]), width = positive(args[7]), height = positive(args[8]);
+        const offset = Math.floor(width / 2), tail = width - offset - 1;
+        const a = [low[0] - offset, low[1], low[2] - offset], b = [high[0] + tail, high[1] + (height - 1), high[2] + tail];
+        const delta = high.map((value, index) => value - low[index]);
+        if ([...a, ...b, ...delta].some(value => !Number.isSafeInteger(value)) || !Number.isSafeInteger(width * width * height + (delta[0] + delta[2]) * width * height + delta[1] * width * width)) throw Error('ERROR: Coordinates or size exceed numeric precision');
+        const order = start.findIndex((value, index) => value !== end[index]);
+        if (order >= 0 && start[order] > end[order]) [start, end] = [end, start];
+        await construct(() => path(start, end, width, height), type, args[9], current);
     }
 
     function* spans(kind, radius, height, center, hollow) {
@@ -153,30 +308,39 @@ export function commands(engine, player) {
         const high = [center[0] + radius, low[1] + height - 1, center[2] + radius];
         if (low[1] < 0) return 'ERROR: Cannot build below ground';
         bounds(low, high);
-        const shape = () => spans(kind, radius, height, center, mode === 'h');
-        current.label = 'Checking shape';
-        current.report();
-        let count = 0, steps = 0, time = performance.now();
-        for (const span of shape()) {
-            count += span[3];
-            if (args[length] !== 'true' && count > CONFIRM) confirm(count, args[length]);
-            if (count > WARNING) break;
-            if (++steps % 256 === 0 && performance.now() - time >= 6) {
-                if (current.cancelled) return;
-                current.done = count;
-                current.report();
-                await wait();
-                time = performance.now();
+        await construct(() => spans(kind, radius, height, center, mode === 'h'), types.get(id), args[length], current);
+    }
+
+    async function construct(shape, type, approval, current, total, prepare) {
+        let count = total;
+        if (count === undefined) {
+            current.label = 'Checking shape';
+            current.report();
+            count = 0;
+            let steps = 0, time = performance.now();
+            for (const span of shape()) {
+                count += span[3];
+                if (approval !== 'true' && count > CONFIRM) confirm(count, approval);
+                if (count > WARNING) break;
+                if (++steps % 256 === 0 && performance.now() - time >= 6) {
+                    if (current.cancelled) return;
+                    current.done = count;
+                    current.report();
+                    await wait();
+                    time = performance.now();
+                }
             }
+            if (count <= WARNING) total = count;
         }
         if (current.cancelled) return;
-        confirm(count, args[length]);
+        confirm(count, approval);
         if (!await warn(count, current)) return;
+        if (prepare) type = prepare();
         current.label = 'Building';
         current.done = 0;
-        if (count <= WARNING) current.total = count;
+        current.total = total;
         current.blocks = true;
-        await build(shape(), types.get(id), current);
+        await build(shape(), type, current);
     }
 
     function teleport(args) {
@@ -204,6 +368,77 @@ export function commands(engine, player) {
             link.click();
         } catch { return 'ERROR: Unable to take screenshot'; }
         finally { marker.visible = visible; }
+    }
+
+    async function map(args, current) {
+        const { low, high } = coordinates(args, 4);
+        if (args.length > 5 || (args[4] && !/^[a-z0-9_-]+$/i.test(args[4]))) return 'ERROR: Invalid filename';
+        bounds(low, high);
+        const width = high[0] - low[0] + 1, height = high[1] - low[1] + 1;
+        if (!await warn(Math.max(width * height, engine.world.size), current)) return;
+        const canvas = document.createElement('canvas');
+        let url;
+        try {
+            canvas.width = width;
+            canvas.height = height;
+            if (canvas.width !== width || canvas.height !== height) throw Error();
+            const context = canvas.getContext('2d');
+            if (!context) throw Error();
+            await inspect(async world => {
+                const top = new Map();
+                current.label = 'Scanning world';
+                current.total = world.size;
+                current.report();
+                let time = performance.now(), steps = 0;
+                for (const cell of world.values()) {
+                    if (current.cancelled) return;
+                    const { x, y, z } = cell;
+                    if (x >= low[0] && x <= high[0] && z >= low[1] && z <= high[1]) {
+                        const index = (z - low[1]) * width + (x - low[0]);
+                        if (!top.has(index) || top.get(index).y < y) top.set(index, cell);
+                    }
+                    current.done++;
+                    if (++steps % 256 === 0 && performance.now() - time >= 6) {
+                        current.report();
+                        await wait();
+                        time = performance.now();
+                    }
+                }
+                if (current.cancelled) return;
+                const colors = top.size ? shades('catalog').map(({ r, g, b }) => `rgb(${r},${g},${b})`) : [];
+                current.label = 'Drawing map';
+                current.done = 0;
+                current.total = top.size;
+                current.report();
+                let type;
+                for (const [index, cell] of top) {
+                    if (current.cancelled) return;
+                    if (type !== cell.type) { type = cell.type; context.fillStyle = colors[type]; }
+                    context.fillRect(index % width, Math.floor(index / width), 1, 1);
+                    if (++current.done % 256 === 0 && performance.now() - time >= 6) {
+                        current.report();
+                        await wait();
+                        time = performance.now();
+                    }
+                }
+            });
+            if (current.cancelled) return;
+            current.message = 'Encoding map… · Esc to cancel';
+            refresh();
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (current.cancelled) return;
+            if (!blob?.size) throw Error();
+            url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${args[4] || 'map'}.png`;
+            link.click();
+        } catch (failure) {
+            return failure.message?.startsWith('ERROR:') ? failure.message : 'ERROR: Unable to export map or allocate resources';
+        } finally {
+            canvas.width = canvas.height = 0;
+            if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
     }
 
     function save(args) {
@@ -272,28 +507,45 @@ export function commands(engine, player) {
         await replace(blocks, true, current);
     }
 
-    function palette(colors) {
+    function shades(colors) {
         const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true });
         if (!context) throw Error('ERROR: Unable to read pixels');
-        const shades = [];
-        ASSETS.forEach((name, type) => {
-            if (!/_(lightest|light|normal|dark|darkest)$/.test(name)) return;
-            if (colors === 'blackwhite' && !/^(black|gray|white)_/.test(name)) return;
-            const texture = engine.parts[type].material.map.image;
-            if (!texture?.width) throw Error('ERROR: Block textures are not ready');
-            canvas.width = texture.width;
-            canvas.height = texture.height;
-            context.drawImage(texture, 0, 0);
-            const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
-            let r = 0, g = 0, b = 0;
-            for (let i = 0; i < pixels.length; i += 4) { r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; }
-            const count = pixels.length / 4;
-            shades.push({ type, r: r / count, g: g / count, b: b / count });
-        });
-        canvas.width = canvas.height = 0;
+        const shades = [], catalog = colors === 'catalog';
+        try {
+            ASSETS.forEach((name, type) => {
+                if (!catalog && !colored(name)) return;
+                if (colors === 'blackwhite' && !/^(black|gray|white)_/.test(name)) return;
+                const texture = engine.parts[type].material.map.image;
+                if (!texture?.width) throw Error('ERROR: Block textures are not ready');
+                canvas.width = texture.width;
+                canvas.height = texture.height;
+                context.drawImage(texture, 0, 0);
+                const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+                let r = 0, g = 0, b = 0;
+                if (catalog) {
+                    const counts = new Map();
+                    let best = 0, color = 0;
+                    for (let i = 0; i < pixels.length; i += 4) {
+                        if (!pixels[i + 3]) continue;
+                        const key = pixels[i] * 65536 + pixels[i + 1] * 256 + pixels[i + 2], count = (counts.get(key) || 0) + 1;
+                        counts.set(key, count);
+                        if (count > best) { best = count; color = key; }
+                    }
+                    r = color >> 16; g = color >> 8 & 255; b = color & 255;
+                } else {
+                    for (let i = 0; i < pixels.length; i += 4) { r += pixels[i]; g += pixels[i + 1]; b += pixels[i + 2]; }
+                    const count = pixels.length / 4;
+                    r /= count; g /= count; b /= count;
+                }
+                shades.push({ type, r, g, b });
+            });
+            return shades;
+        } finally { canvas.width = canvas.height = 0; }
+    }
+
+    function match(shades) {
         const cache = new Map();
-        return (r, g, b) => {
-            const key = r * 65536 + g * 256 + b;
+        return (r, g, b, key = r * 65536 + g * 256 + b) => {
             let type = cache.get(key);
             if (type !== undefined) return type;
             let best = Infinity;
@@ -377,7 +629,7 @@ export function commands(engine, player) {
             bounds(low, high);
             if (!await warn(width * height, current)) return;
             if (engine.busy || engine.world !== previous) return 'ERROR: World is busy';
-            const shade = palette(colors);
+            const shade = match(shades(colors));
             let tile;
             function* rows() {
                 for (tile of tiles()) {

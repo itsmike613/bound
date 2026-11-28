@@ -34,22 +34,51 @@
         <div class="info"><span>MIDDLE CLICK</span><span>PICK BLOCK</span></div>
         <div class="info"><span>WHEEL · Q / E</span><span>CHOOSE BLOCK IN ACTIVE SECTION</span></div>
         <div class="info"><span>1 / 2</span><span>OPEN CATALOG / INVENTORY</span></div>
+        <div class="info"><span>LEFT CLICK (SIDEBAR)</span><span>CHOOSE BLOCK</span></div>
+        <div class="info"><span>RIGHT CLICK (SIDEBAR)</span><span>ADD / REMOVE INVENTORY BLOCK</span></div>
         <div class="info"><span>=</span><span>ADD / REMOVE SELECTED BLOCK</span></div>
         <div class="info"><span>SPACE</span><span>JUMP · DOUBLE TAP TO TOGGLE FLIGHT</span></div>
         <div class="info"><span>SPACE / SHIFT</span><span>ASCEND / DESCEND WHILE FLYING</span></div>
         <div class="info"><span>ESC</span><span>UNLOCK / CLOSE COMMANDS</span></div>
         <div class="info"><span>/</span><span>OPEN COMMANDS</span></div>
         <div class="info"><span>ENTER</span><span>EXECUTE COMMAND</span></div>
-        <p>The catalog contains all blocks. Left click a sidebar block to select it, or right click to add or remove it from your inventory. A blue border marks inventory blocks in the catalog.</p>
-        <p>Your selected block stays available for building even if it is not in your inventory. Switch sections without changing your selection. Use the wheel over the game or Q / E to cycle through the active section. Your inventory is saved in this browser.</p>
         <div class="heading"><span>COMMANDS</span></div>
         <p>The syntax bar guides you as you type. The status bar displays warnings, errors, progress and results.</p>
-        <p>Add true when building or removing more than 1,000 blocks. Commands involving more than 250,000 blocks display a performance warning. Press ENTER again to proceed, or edit or close the command to cancel confirmation.</p>
+        <p>Add true when building or removing more than 1,000 blocks. Large commands may display a performance warning. Press ENTER again to proceed, or edit or close the command to cancel confirmation.</p>
         <p>Press ESC to close commands, then ESC again to cancel a running command if possible. Blocks already placed or removed will remain changed.</p>
+        <p>X and Z are horizontal axes. Y is the vertical axis.</p>
         <p><b>/fill x y z x y z id [true]</b></p>
         <p>Fill the area between two block coordinates, including both corners. Enter a block ID to place blocks, or 0 to remove them.</p>
         <p>EXAMPLE: /fill 0 0 0 4 0 4 green_lightest</p>
         <p>Builds a 5×5 platform using green_lightest blocks.</p>
+        <p><b>/dither x y z x y z id id percentage [true]</b></p>
+        <p>Mix two blocks in an evenly distributed pattern. Percentage determines the approximate amount of the second block, from 0 to 100. Use 0 as a block ID to remove blocks.</p>
+        <p>EXAMPLE: /dither 0 0 0 7 0 7 white_lightest black_darkest 50</p>
+        <p>Creates an evenly mixed black and white platform.</p>
+        <p><b>/gradient x y z x y z id id x|y|z [true]</b></p>
+        <p>Build a transition between two color blocks along the chosen axis, from the first coordinates toward the second, using available catalog colors.</p>
+        <p>EXAMPLE: /gradient 0 0 0 9 0 4 red_normal blue_normal x</p>
+        <p>Creates a red-to-blue gradient along the X-axis.</p>
+        <p><b>/checker x y z x y z id id size [true]</b></p>
+        <p>Build alternating squares or cubes of the specified size. Use 0 as a block ID to remove blocks.</p>
+        <p>EXAMPLE: /checker 0 0 0 7 0 7 white_lightest black_darkest 2</p>
+        <p>Creates a black and white checkerboard with 2×2 squares.</p>
+        <p><b>/border x y z x y z id thickness [true]</b></p>
+        <p>Build a border or hollow structure inward from the selected boundaries, leaving the interior unchanged. If the border is too thick to leave an interior, the entire area is filled. Use 0 to remove blocks.</p>
+        <p>EXAMPLE: /border 0 0 0 6 0 6 green_lightest 1</p>
+        <p>Creates a 7×7 border, 1 block thick, using green_lightest blocks.</p>
+        <p><b>/stripe x y z x y z id id size x|y|z [true]</b></p>
+        <p>Build alternating stripes or layers of the specified width along the chosen axis. Stripes stop at the selected boundaries. Use 0 as a block ID to remove blocks.</p>
+        <p>EXAMPLE: /stripe 0 0 0 7 0 7 red_normal white_lightest 2 x</p>
+        <p>Creates alternating red and white stripes, 2 blocks wide, along the X-axis.</p>
+        <p><b>/noise x y z x y z id id percentage [true]</b></p>
+        <p>Randomly mix two blocks. Percentage determines the chance of placing the second block, from 0 to 100. Use 0 as a block ID to remove blocks.</p>
+        <p>EXAMPLE: /noise 0 0 0 7 0 7 green_normal green_dark 25</p>
+        <p>Creates a green platform with randomly distributed darker blocks.</p>
+        <p><b>/line x y z x y z id width height [true]</b></p>
+        <p>Build a straight or diagonal line between two block coordinates. Width determines its horizontal thickness, while height extends upward. Use 0 to remove blocks.</p>
+        <p>EXAMPLE: /line 0 0 0 8 4 8 green_lightest 2 1</p>
+        <p>Creates an ascending diagonal line, 2 blocks wide and 1 block tall, using green_lightest blocks.</p>
         <p><b>/circle radius height id h|s [true]</b></p>
         <p>Build a hollow circular wall (h) or solid cylinder (s) from your feet upward. The minimum radius is 2 blocks.</p>
         <p>EXAMPLE: /circle 5 4 green_lightest h</p>
@@ -83,6 +112,10 @@
         <p>Download a screenshot of your current view without the interface. Enter a filename without its extension, or leave it blank to save as screenshot.png.</p>
         <p>EXAMPLE: /screenshot mybuild</p>
         <p>Downloads your screenshot as mybuild.png.</p>
+        <p><b>/map x z x z [name]</b></p>
+        <p>Download a top-down PNG image of the selected area, including both corners. Each pixel represents the color of the highest block at that position. Areas without blocks are transparent. Enter a filename without its extension, or leave it blank to save as map.png.</p>
+        <p>EXAMPLE: /map 0 0 15 15 mymap</p>
+        <p>Downloads a 16×16 image of the selected area as mymap.png.</p>
         <a id="help" href="index.html">BACK TO GAME</a>
     </main>
 </body>
