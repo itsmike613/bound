@@ -22,7 +22,8 @@ html, body {
 
 aside {
     z-index: 2;
-    flex: 0 0 clamp(254px, 23vw, 318px);
+    flex: 0 0 clamp(216px, calc(19.1666vw + 4.33px), 269.33px);
+    min-width: 0;
     height: 100%;
     padding: 18px 14px 14px;
     display: flex;
@@ -41,7 +42,8 @@ h1 {
     letter-spacing: .17em;
     line-height: 1;
     margin: 0;
-    font-weight: 900
+    font-weight: 900;
+    white-space: nowrap
 }
 
 h1 span {
@@ -71,11 +73,38 @@ header p {
     border-bottom: 1px solid #343941
 }
 
+aside .heading {
+    gap: 3px;
+    padding: 4px 0
+}
+
+.heading button {
+    flex: 1;
+    padding: 4px 0;
+    border: 1px solid #343941;
+    border-radius: 0;
+    background: #16191f;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    cursor: pointer
+}
+
+.heading button:hover {
+    border-color: #68778a
+}
+
+.heading button[aria-pressed="true"] {
+    background: #25313c;
+    border-color: #68778a;
+    color: #e5e9ef
+}
+
 #palette {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     grid-auto-rows: max-content;
     align-content: start;
     overflow-y: auto;
@@ -115,6 +144,18 @@ header p {
     outline: 2px solid #d9ebf5;
     outline-offset: -2px;
     border-color: #d9ebf5
+}
+
+.tile[hidden] {
+    display: none
+}
+
+#palette:not(.inventory) .owned {
+    border-color: #3A94E9
+}
+
+#palette:not(.inventory) .owned.selected {
+    outline-offset: -3px
 }
 
 .cube {
@@ -323,7 +364,7 @@ header p {
 
 @media(max-width:680px) {
     aside {
-        flex-basis: 190px;
+        flex-basis: 160.5px;
         padding: 10px 7px
     }
 
@@ -333,6 +374,10 @@ header p {
 
     header {
         padding-bottom: 12px
+    }
+
+    aside header {
+        padding-left: 0
     }
 
     .heading, .info {

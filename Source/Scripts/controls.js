@@ -1,29 +1,77 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
 
 export function controls(engine) {
-    const { SIZE, RADIUS, ASSETS, canvas, camera, key, asset, add, remove, aim } = engine;
+    const { SIZE, RADIUS, ASSETS, types, canvas, camera, key, asset, add, remove, aim } = engine;
     const EYE = 1.76;
     const HEIGHT = 2;
 
     const palette = document.querySelector('#palette');
-    const total = document.querySelector('#total');
+    const tabs = document.querySelectorAll('.heading button');
     const number = document.querySelector('#number');
     const coords = document.querySelector('#coords');
     const mode = document.querySelector('#mode');
 
     const tiles = [];
-    let chosen = 0;
+    const inventory = new Set();
+    let chosen = 0, section = 0;
+
+    function storage() {
+        const value = localStorage.getItem('bound');
+        try {
+            const data = JSON.parse(value);
+            if (data && typeof data === 'object' && !Array.isArray(data)) return data;
+        } catch { }
+        return {};
+    }
+
+    try {
+        const ids = storage().inventory;
+        if (Array.isArray(ids)) for (const id of ids) if (types.has(id)) inventory.add(id);
+    } catch { }
 
     function select(index) {
-        chosen = (index + ASSETS.length) % ASSETS.length;
-        tiles.forEach((tile, index) => tile.classList.toggle('selected', index === chosen));
+        tiles[chosen].classList.remove('selected');
+        chosen = index;
+        tiles[chosen].classList.add('selected');
         number.textContent = ASSETS[chosen];
-        tiles[chosen].scrollIntoView({ block: 'nearest' });
+        if (!tiles[chosen].hidden) tiles[chosen].scrollIntoView({ block: 'nearest' });
+    }
+
+    function show(index) {
+        if (section === index) return;
+        section = index;
+        tabs.forEach((tab, index) => tab.setAttribute('aria-pressed', index === section));
+        palette.classList.toggle('inventory', !!section);
+        tiles.forEach((tile, index) => tile.hidden = !!section && !inventory.has(ASSETS[index]));
+        palette.scrollTop = 0;
+        if (!tiles[chosen].hidden) tiles[chosen].scrollIntoView({ block: 'nearest' });
+    }
+
+    function toggle(index) {
+        const id = ASSETS[index], owned = !inventory.delete(id);
+        if (owned) inventory.add(id);
+        tiles[index].classList.toggle('owned', owned);
+        tiles[index].hidden = !!section && !owned;
+        if (owned && section && index === chosen) tiles[index].scrollIntoView({ block: 'nearest' });
+        try {
+            const data = storage();
+            data.inventory = ASSETS.filter(id => inventory.has(id));
+            localStorage.setItem('bound', JSON.stringify(data));
+        } catch { }
+    }
+
+    function cycle(step) {
+        if (section && !inventory.size) return;
+        let index = chosen;
+        do {
+            index = (index + step + ASSETS.length) % ASSETS.length;
+            if (!tiles[index].hidden) { select(index); return; }
+        } while (index !== chosen);
     }
 
     ASSETS.forEach((name, index) => {
         const tile = document.createElement('button');
-        tile.className = 'tile';
+        tile.className = inventory.has(name) ? 'tile owned' : 'tile';
         tile.type = 'button';
         tile.title = name;
         tile.style.setProperty('--img', `url("${new URL(asset(name), location.href)}")`);
@@ -33,7 +81,12 @@ export function controls(engine) {
         tiles.push(tile);
     });
 
-    total.textContent = `${ASSETS.length} TOTAL`;
+    tabs.forEach((tab, index) => tab.addEventListener('click', () => show(index)));
+    palette.addEventListener('contextmenu', event => {
+        event.preventDefault();
+        const tile = event.target.closest('.tile');
+        if (tile && event.button === 2) toggle(tiles.indexOf(tile));
+    });
     select(0);
 
     const body = new THREE.Vector3(SIZE / 2, 0, SIZE / 2);
@@ -181,12 +234,16 @@ export function controls(engine) {
                 panel.open();
                 return;
             }
-            if (['Space', 'ArrowUp', 'ArrowDown', 'KeyQ', 'KeyE'].includes(event.code)) event.preventDefault();
+            const shortcut = ['1', '2', '='].includes(event.key) && !event.ctrlKey && !event.altKey && !event.metaKey;
+            if (shortcut || ['Space', 'ArrowUp', 'ArrowDown', 'KeyQ', 'KeyE'].includes(event.code)) event.preventDefault();
             const held = keys.has(event.code);
             keys.add(event.code);
             if (event.repeat || held) return;
-            if (event.code === 'KeyQ') select(chosen - 1);
-            if (event.code === 'KeyE') select(chosen + 1);
+            if (shortcut) {
+                if (event.key === '=') toggle(chosen); else show(Number(event.key) - 1);
+            }
+            if (event.code === 'KeyQ') cycle(-1);
+            if (event.code === 'KeyE') cycle(1);
             const now = performance.now();
 
             if (event.code === 'KeyW') {
@@ -217,7 +274,7 @@ export function controls(engine) {
         window.addEventListener('wheel', event => {
             if (palette.contains(event.target) || panel.active) return;
             event.preventDefault();
-            if (event.deltaY) select(chosen + Math.sign(event.deltaY));
+            if (event.deltaY) cycle(Math.sign(event.deltaY));
         }, { passive: false });
     }
 
